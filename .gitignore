@@ -1,0 +1,11 @@
+.env
+
+.mypy_cache/
+.idea/
+.vscode/
+venv/
+__pycache__/
+build/
+dist/
+main.spec
+tasks.txt
