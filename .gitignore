@@ -3,6 +3,7 @@
 .mypy_cache/
 .idea/
 .vscode/
+.ropeproject/
 venv/
 __pycache__/
 build/
