@@ -19,7 +19,7 @@ def get_all_list_dir(name_dir: str, mask: str = '*') -> int:
     select_dir = pathlib.Path(name_dir.strip('"'))
     index = 0
     for item in select_dir.rglob(mask):
-        print(f"{'#' if item.is_dir() else '->'} {item}")
+        print(f"{'[папка]' if item.is_dir() else '->'} {item}")
         index += 1
     return index
 
@@ -28,10 +28,10 @@ def main_menu():
     mask_filter = ''
 
     while True:
-        ask = input('Выберите действие:\nВыбрать каталог(нажми "1"), Выйти(нажми "2"): ')
+        ask = input('Выберите действие:\nВыбрать каталог (нажми "1"), Выйти (нажми "2"): ')
         if ask == '1':
             ask_path_dir = input('Введите путь к каталогу файлов: ')
-            ask_mask_filter = input('Выберите маску фильтра поиска:\nДД.ММ.ГГГГ(нажми "1"), ДД-ММ-ГГГГ(нажми "2") или введите вручную (нажми "3"): ')
+            ask_mask_filter = input('Выберите маску фильтра поиска:\nДД.ММ.ГГГГ (нажми "1"), ДД-ММ-ГГГГ (нажми "2") или введите вручную (нажми "3"): ')
             if not ask_mask_filter:
                 mask_filter = '*'
             if ask_mask_filter == '1':
@@ -41,10 +41,12 @@ def main_menu():
             if ask_mask_filter == '3':
                 handler_mask = input('Введите маску даты вручную: ')
                 mask_filter = handler_mask
-            if get_all_list_dir(ask_path_dir, mask_filter) > 0:
-                ask_rename = input('Переименовать найденные каталоги/файлы?\n Да(нажми "1"), Нет(нажми "2"): ')
+                sum_files = get_all_list_dir(ask_path_dir, mask_filter)
+            if sum_files > 0:
+                print(f"Найдено {sum_files} файла(ов)")
+                ask_rename = input('Переименовать найденные каталоги/файлы?\n Да (нажми "1"), Нет (нажми "2"): ')
                 if ask_rename == '1':
-                    mask_renamed = input('Выберите маску даты для переименования:\nГГГГ.ММ.ДД(нажми "1"), ГГ.ММ.ДД(нажми "2"): ')
+                    mask_renamed = input('Выберите маску даты для переименования:\nГГГГ.ММ.ДД (нажми "1"), ГГ.ММ.ДД (нажми "2"): ')
                     if not mask_renamed:
                         continue
                     if mask_renamed == '1':
