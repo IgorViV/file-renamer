@@ -16,7 +16,7 @@ def get_list_dir(name_dir: str):
 
 def get_all_list_dir(name_dir: str, mask: str = '*') -> int:
     'получает список каталогов/файлов с учетом вложенных'
-    select_dir = pathlib.Path(name_dir)
+    select_dir = pathlib.Path(name_dir.strip('"'))
     index = 0
     for item in select_dir.rglob(mask):
         print(f"{'#' if item.is_dir() else '->'} {item}")
@@ -25,18 +25,22 @@ def get_all_list_dir(name_dir: str, mask: str = '*') -> int:
 
 def main_menu():
     print(TITLE_CLI)
+    mask_filter = ''
 
     while True:
         ask = input('Выберите действие:\nВыбрать каталог(нажми "1"), Выйти(нажми "2"): ')
         if ask == '1':
             ask_path_dir = input('Введите путь к каталогу файлов: ')
-            mask_filter = input('Выберите маску фильтра поиска:\nДД.ММ.ГГГГ(нажми "1"), ДД-ММ-ГГ(нажми "2"): ')
-            if not mask_filter:
+            ask_mask_filter = input('Выберите маску фильтра поиска:\nДД.ММ.ГГГГ(нажми "1"), ДД-ММ-ГГГГ(нажми "2") или введите вручную (нажми "3"): ')
+            if not ask_mask_filter:
                 mask_filter = '*'
-            if mask_filter == '1':
+            if ask_mask_filter == '1':
                 mask_filter = '[0-3][0-9].[0-1][0-2].[1-2][0-9][0-9][0-9]*'
-            if mask_filter == '2':
-                mask_filter = '[0-3][0-9]-[0-1][0-2]-[0-9][0-9]*'
+            if ask_mask_filter == '2':
+                mask_filter = '[0-3][0-9]-[0-1][0-2]-[1-2][0-9][0-9][0-9]*'
+            if ask_mask_filter == '3':
+                handler_mask = input('Введите маску даты вручную: ')
+                mask_filter = handler_mask
             if get_all_list_dir(ask_path_dir, mask_filter) > 0:
                 ask_rename = input('Переименовать найденные каталоги/файлы?\n Да(нажми "1"), Нет(нажми "2"): ')
                 if ask_rename == '1':
