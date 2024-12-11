@@ -1,68 +1,82 @@
 import os
+import time
 import pathlib
+from datetime import datetime
 
 TITLE_CLI = '''=====================================
 | Утилита для переименования файлов |
 |           ver. 0.1.0              |
 =====================================
+* Утилита изменения формата записи
+даты в префиксе наименования файла
 '''
 current_dir = os.getcwd()
 
-def get_list_dir(name_dir: str):
-    'получает список каталогов/файлов'
-    select_dir = pathlib.Path(name_dir)
-    for item in select_dir.iterdir():
-        print(f"{'#' if item.is_dir() else '->'} {item}")
-
-def get_all_list_dir(name_dir: str, mask: str = '*') -> int:
+def get_all_list_dir(name_dir: str, mask: str = '*') -> list:
     'получает список каталогов/файлов с учетом вложенных'
+    list_files = []
     select_dir = pathlib.Path(name_dir.strip('"'))
-    index = 0
-    for item in select_dir.rglob(mask):
+    for item in sorted(select_dir.rglob(mask), reverse=True):
         print(f"{'[папка]' if item.is_dir() else '->'} {item}")
-        index += 1
-    return index
+        list_files.append(item)
+    return list_files
 
 def main_menu():
+    'главное меню консольного приложения'
     print(TITLE_CLI)
     mask_filter = ''
 
     while True:
-        ask = input('Выберите действие:\nВыбрать каталог (нажми "1"), Выйти (нажми "2"): ')
+        ask = input('Выберите действие:\nВыбрать каталог для переименования (нажми "1"), Выйти (нажми "Enter"): ')
         if ask == '1':
-            ask_path_dir = input('Введите путь к каталогу файлов: ')
-            ask_mask_filter = input('Выберите маску фильтра поиска:\nДД.ММ.ГГГГ (нажми "1"), ДД-ММ-ГГГГ (нажми "2") или введите вручную (нажми "3"): ')
-            if not ask_mask_filter:
-                mask_filter = '*'
-            if ask_mask_filter == '1':
-                mask_filter = '[0-3][0-9].[0-1][0-2].[1-2][0-9][0-9][0-9]*'
-            if ask_mask_filter == '2':
-                mask_filter = '[0-3][0-9]-[0-1][0-2]-[1-2][0-9][0-9][0-9]*'
-            if ask_mask_filter == '3':
-                handler_mask = input('Введите маску даты вручную: ')
-                mask_filter = handler_mask
-                sum_files = get_all_list_dir(ask_path_dir, mask_filter)
-            if sum_files > 0:
-                print(f"Найдено {sum_files} файла(ов)")
-                ask_rename = input('Переименовать найденные каталоги/файлы?\n Да (нажми "1"), Нет (нажми "2"): ')
-                if ask_rename == '1':
-                    mask_renamed = input('Выберите маску даты для переименования:\nГГГГ.ММ.ДД (нажми "1"), ГГ.ММ.ДД (нажми "2"): ')
-                    if not mask_renamed:
-                        continue
-                    if mask_renamed == '1':
-                        mask_renamed = '[0-3][0-9].[0-1][0-2].[1-2][0-9][0-9][0-9]*'
-                    if mask_renamed == '2':
-                        mask_renamed = '[0-3][0-9].[0-1][0-2].[0-9][0-9]*'
-                    print('Работаем! ====>')
-                    # for dir_file in os.listdir(ask_path_dir):
-                        # print(dir_file)
-                        # os.rename(f'{ask_way_file}/{dir_file}', f'{ask_way_file}/{dir_file}')
-            else:
-                print('Файлы не найдены!\n')
-            continue
+            while True:
+                ask_path_dir = input('Введите путь к каталогу файлов: ')
+                if not ask_path_dir:
+                    print('Хм, вы не ввели данные, повторим:')
+                if ask_path_dir:
+                    break
 
+            if ask_path_dir == '.' or ask_path_dir == '.':
+                ask_mask_filter = input(f'В текущем каталоге будет произведен поиск файлов у которых наименование с префиксом датой в формате ДД.ММ.ГГ\nПродолжить (нажми "1"), Выйти (нажми "Enter"): ')
+            else:
+                ask_mask_filter = input(f'В каталоге {ask_path_dir} будет произведен поиск файлов у которых наименование с префиксом датой в формате ДД.ММ.ГГ\nПродолжить (нажми "1"), Выйти (нажми "Enter"): ')
+
+            if ask_mask_filter == '1':
+                mask_filter = '[0-3][0-9].[0-1][0-9].[0-9][0-9] *'
+
+                try:
+                    list_files = get_all_list_dir(ask_path_dir, mask_filter)
+                except:
+                    print('Указанный каталог не существует!')
+                    break
+
+                if len(list_files) > 0:
+                    print(f"Найдено {len(list_files)} файла(ов)")
+                    ask_rename = input('Переименовать найденные каталоги/файлы?\nДа (нажми "1"), Нет (нажми "Enter"): ')
+                    if ask_rename == '1':
+                        ask_mask_renamed = input('Дата в префиксе наименований найденных файлов будет изменена на дату вида ГГГГ.ММ.ДД\nУверены что это нужно? Да (нажми "1"), Выйти (нажми "Enter"): ')
+                        if ask_mask_renamed == '1':
+                            print('Работаем ====>')
+                            for item in list_files:
+                                name_file = item.name
+                                date_in_name = name_file[:8]
+                                dateobj = datetime.strptime(date_in_name, '%d.%m.%y').date()
+                                date_string = dateobj.strftime('%Y.%m.%d')
+                                print(f'{date_string}{name_file[8:]}')
+                                os.rename(f'{item}', item.with_name(f'{date_string}{name_file[8:]}'))
+                            print('Выполнено!\n')
+                        else:
+                            continue
+                    else:
+                        continue
+                else:
+                    print('Файлы не найдены!\n')
+                continue
+            else:
+                continue
         else:
             print('\nПока!')
+            time.sleep(0.5)
             break
 
 if __name__ == "__main__":
