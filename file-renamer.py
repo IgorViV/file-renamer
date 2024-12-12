@@ -24,6 +24,19 @@ def get_all_list_dir(name_dir: str, mask: str = '*') -> list:
         list_files.append(item)
     return list_files
 
+def set_ending(quantity: int, word: str, first_change_word: str, second_change_word: str) -> str:
+    '''устанавливает необходимое окончание слова, например:
+    11 файлов, 1 файл, 3 файла
+    '''
+    if quantity in (11, 12, 13, 14):
+        return word
+    elif quantity % 10 == 1:
+        return first_change_word
+    elif quantity % 10 in (2, 3, 4):
+        return second_change_word
+    else:
+        return word
+
 def main_menu():
     'главное меню консольного приложения'
     print(TITLE_CLI)
@@ -50,13 +63,15 @@ def main_menu():
                     print(e)
                     continue
                 else:
-                    print('Успешно!')
+                    print('Каталог проверен:')
 
-                if len(list_files) > 0:
-                    print(f"Найдено {len(list_files)} файла(ов)")
+                len_list_files = len(list_files)
+
+                if len_list_files > 0:
+                    print(f"Найдено {len_list_files} {set_ending(len_list_files, 'файлов', 'файл', 'файла')}")
                     ask_rename = input('Переименовать найденные каталоги/файлы?\nДа (нажми "1"), Нет (нажми "Enter"): ')
                     if ask_rename == '1':
-                        ask_mask_renamed = input('Дата в префиксе наименований найденных файлов будет изменена на дату вида ГГГГ.ММ.ДД\nУверены что это нужно? Да (нажми "1"), Выйти (нажми "Enter"): ')
+                        ask_mask_renamed = input('Дата в префиксе наименований файлов будет изменена на дату вида ГГГГ.ММ.ДД\nУверены что это нужно? Да (нажми "1"), Выйти (нажми "Enter"): ')
                         if ask_mask_renamed == '1':
                             print('Работаем ====>')
                             for item in list_files:
