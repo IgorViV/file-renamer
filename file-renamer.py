@@ -3,6 +3,14 @@ import time
 import pathlib
 import logging
 from datetime import datetime
+from math import exp
+
+logging.basicConfig(level=logging.INFO, filename='py_log.log', filemode='w', format='%(asctime)s %(levelname)s %(message)s')
+logging.debug('A DEBUG Message')
+logging.info('An INFO')
+logging.warning('A WARNING')
+logging.error('An ERROR')
+logging.critical('A message of CRITICAL severity')
 
 TITLE_CLI = '''=====================================
 | Утилита для переименования файлов |
@@ -11,7 +19,6 @@ TITLE_CLI = '''=====================================
 * Утилита изменения формата записи
 даты в префиксе наименования файла
 '''
-current_dir = os.getcwd()
 
 def get_all_list_dir(name_dir: str, mask: str = '*') -> list:
     'получает список каталогов/файлов с учетом вложенных'
@@ -47,9 +54,14 @@ def rename_prefix(list_files: list):
         try:
             os.rename(f'{item}', item.with_name(f'{date_string}{name_file[8:]}'))
         except Exception as e:
-            print('Исключение:', e)
+            print(e)
+            logging.exception(e)
         else:
             print(f'{item} переименован --> {date_string}{name_file[8:]}')
+
+def rename_label_file():
+    'переименовывает ссылку ярлыка на файл'
+    pass
 
 def main_menu():
     'главное меню консольного приложения'
@@ -63,8 +75,10 @@ def main_menu():
                 ask_path_dir = input('Введите путь к каталогу файлов: ')
                 if not ask_path_dir:
                     print('Хм, вы не ввели данные, повторим:')
-                if ask_path_dir:
+                if ask_path_dir and os.path.isdir(ask_path_dir.strip('"')):
                     break
+                else:
+                    print('Указанный вами каталог не существует.')
 
             ask_mask_filter = input(f'В каталоге {ask_path_dir} будет произведен поиск файлов у которых наименование с префиксом датой в формате ДД.ММ.ГГ\nПродолжить (нажми "1"), Выйти (нажми "Enter"): ')
 
@@ -75,6 +89,7 @@ def main_menu():
                     list_files = get_all_list_dir(ask_path_dir, mask_filter)
                 except Exception as e:
                     print(e)
+                    logging.exception(e)
                     continue
                 else:
                     print('Каталог проверен:')
@@ -90,6 +105,8 @@ def main_menu():
                             print('Работаем:')
                             rename_prefix(list_files)
                             print('Выполнено!\n')
+                            # print('Переименовывает ссылки в ярлыках:\n')
+                            # rename_label_file()
                         else:
                             continue
                     else:

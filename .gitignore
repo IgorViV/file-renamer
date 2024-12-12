@@ -11,3 +11,4 @@ dist/
 *.spec
 tasks.txt
 *.tmp
+*.log
