@@ -37,6 +37,20 @@ def set_ending(quantity: int, word: str, first_change_word: str, second_change_w
     else:
         return word
 
+def rename_prefix(list_files: list):
+    'переименовывает дату в префиксе имени файла'
+    for item in list_files:
+        name_file = item.name
+        date_in_name = name_file[:8]
+        dateobj = datetime.strptime(date_in_name, '%d.%m.%y').date()
+        date_string = dateobj.strftime('%Y.%m.%d')
+        try:
+            os.rename(f'{item}', item.with_name(f'{date_string}{name_file[8:]}'))
+        except Exception as e:
+            print('Исключение:', e)
+        else:
+            print(f'{item} переименован --> {date_string}{name_file[8:]}')
+
 def main_menu():
     'главное меню консольного приложения'
     print(TITLE_CLI)
@@ -68,19 +82,13 @@ def main_menu():
                 len_list_files = len(list_files)
 
                 if len_list_files > 0:
-                    print(f"Найдено {len_list_files} {set_ending(len_list_files, 'файлов', 'файл', 'файла')}")
+                    print(f"{set_ending(len_list_files, 'Найдено', 'Найден', 'Найдено')} {len_list_files} {set_ending(len_list_files, 'файлов', 'файл', 'файла')}")
                     ask_rename = input('Переименовать найденные каталоги/файлы?\nДа (нажми "1"), Нет (нажми "Enter"): ')
                     if ask_rename == '1':
                         ask_mask_renamed = input('Дата в префиксе наименований файлов будет изменена на дату вида ГГГГ.ММ.ДД\nУверены что это нужно? Да (нажми "1"), Выйти (нажми "Enter"): ')
                         if ask_mask_renamed == '1':
-                            print('Работаем ====>')
-                            for item in list_files:
-                                name_file = item.name
-                                date_in_name = name_file[:8]
-                                dateobj = datetime.strptime(date_in_name, '%d.%m.%y').date()
-                                date_string = dateobj.strftime('%Y.%m.%d')
-                                print(f'{date_string}{name_file[8:]}')
-                                os.rename(f'{item}', item.with_name(f'{date_string}{name_file[8:]}'))
+                            print('Работаем:')
+                            rename_prefix(list_files)
                             print('Выполнено!\n')
                         else:
                             continue
