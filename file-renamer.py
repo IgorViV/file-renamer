@@ -1,6 +1,7 @@
 import os
 import time
 import pathlib
+import logging
 from datetime import datetime
 
 TITLE_CLI = '''=====================================
@@ -15,6 +16,8 @@ current_dir = os.getcwd()
 def get_all_list_dir(name_dir: str, mask: str = '*') -> list:
     'получает список каталогов/файлов с учетом вложенных'
     list_files = []
+    if not os.path.isdir(name_dir.strip('"')):
+        raise Exception('Указанный вами каталог не существует!')
     select_dir = pathlib.Path(name_dir.strip('"'))
     for item in sorted(select_dir.rglob(mask), reverse=True):
         print(f"{'[папка]' if item.is_dir() else '->'} {item}")
@@ -36,19 +39,18 @@ def main_menu():
                 if ask_path_dir:
                     break
 
-            if ask_path_dir == '.' or ask_path_dir == '.':
-                ask_mask_filter = input(f'В текущем каталоге будет произведен поиск файлов у которых наименование с префиксом датой в формате ДД.ММ.ГГ\nПродолжить (нажми "1"), Выйти (нажми "Enter"): ')
-            else:
-                ask_mask_filter = input(f'В каталоге {ask_path_dir} будет произведен поиск файлов у которых наименование с префиксом датой в формате ДД.ММ.ГГ\nПродолжить (нажми "1"), Выйти (нажми "Enter"): ')
+            ask_mask_filter = input(f'В каталоге {ask_path_dir} будет произведен поиск файлов у которых наименование с префиксом датой в формате ДД.ММ.ГГ\nПродолжить (нажми "1"), Выйти (нажми "Enter"): ')
 
             if ask_mask_filter == '1':
                 mask_filter = '[0-3][0-9].[0-1][0-9].[0-9][0-9] *'
 
                 try:
                     list_files = get_all_list_dir(ask_path_dir, mask_filter)
-                except:
-                    print('Указанный каталог не существует!')
-                    break
+                except Exception as e:
+                    print(e)
+                    continue
+                else:
+                    print('Успешно!')
 
                 if len(list_files) > 0:
                     print(f"Найдено {len(list_files)} файла(ов)")
