@@ -3,6 +3,7 @@ import time
 import pathlib
 import logging
 from datetime import datetime
+import winshell
 
 logging.basicConfig(level=logging.INFO, filename='renamer_log.log', filemode='w', format='%(asctime)s %(levelname)s %(message)s')
 logging.debug('A DEBUG Message')
@@ -72,6 +73,13 @@ def rename_files(list_files: list):
 def rename_label_files(list_label_files: list):
     'переименовывает ярлыки файлов'
     print(list_label_files)
+    for label in list_label_files:
+        try:
+            shortcut = winshell.shortcut(str(label))
+            print('Ссылка ярлыка:', shortcut.path)
+        except Exception as e:
+            print(e)
+            logging.exception(e)
 
 def main_menu():
     'главное меню консольного приложения'
@@ -123,7 +131,7 @@ def main_menu():
                     ask_rename_label = input('\nПереименовать найденные ярлыки (ссылки и файлы на которые они ссылаются)?\nДа (нажми "1"), Нет (нажми "Enter"): ')
 
                     if ask_rename_label == '1':
-                        print('Работаем:')
+                        print('Разбираем ярлыки:')
                         rename_label_files(list_labels_files)
                         print('Выполнено!\n')
                     else:
