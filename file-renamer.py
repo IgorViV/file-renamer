@@ -3,7 +3,6 @@ import time
 import pathlib
 import logging
 from datetime import datetime
-from math import exp
 
 logging.basicConfig(level=logging.INFO, filename='py_log.log', filemode='w', format='%(asctime)s %(levelname)s %(message)s')
 logging.debug('A DEBUG Message')
@@ -58,10 +57,6 @@ def rename_prefix(list_files: list):
             logging.exception(e)
         else:
             print(f'{item} переименован --> {date_string}{name_file[8:]}')
-
-def rename_label_file():
-    'переименовывает ссылку ярлыка на файл'
-    pass
 
 def main_menu():
     'главное меню консольного приложения'
