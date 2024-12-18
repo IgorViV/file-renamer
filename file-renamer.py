@@ -3,10 +3,11 @@ import time
 import pathlib
 import logging
 from datetime import datetime
-# import winshell
+from typing import List, Tuple
+import winshell
 
 MASK_FILTER_FILE = '[0-3][0-9].[0-1][0-9].[0-9][0-9] *'
-MASK_FILTER_LABEL = '[0-3][0-9].[0-1][0-9].[0-9][0-9] *.lnk'
+MASK_FILTER_SHORTCUT = '*.lnk'
 TITLE_CLI = """=====================================
 | Утилита для переименования файлов |
 |           ver. 0.1.1              |
@@ -29,6 +30,120 @@ def setup_logging():
         ]
     )
 
+class FileRenamer:
+    def __init__(self, directory: str):
+        self.directory = directory.strip('"')
+        self.mask = MASK_FILTER_FILE
+        self.mask_shortcut = MASK_FILTER_SHORTCUT
+        self.logger = logging.getLogger(__name__)
+
+    def validate_directory(self) -> bool:
+        """проверяет существование каталога"""
+        if not os.path.exists(self.directory):
+            self.logger.error(f"Указанный вами каталог {self.directory} не существует")
+            return False
+        return True
+
+    def get_files_list(self) -> List[pathlib.Path]:
+        """получает список файлов в каталоге"""
+        list_files = []
+        try:
+            select_dir = pathlib.Path(self.directory)
+            for item in sorted(select_dir.rglob(self.mask), reverse=True):
+                print(f"{'[папка]' if item.is_dir() else '->'} {item}")
+                list_files.append(item)
+            self.logger.info(f"Найдено файлов: {len(list_files)}")
+            return list_files
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении списка файлов: {e}")
+            return []
+
+    def get_shortcut_list(self) -> List[pathlib.Path]:
+        """получает список ярлыков в каталоге"""
+        list_shortcut = []
+        try:
+            select_dir = pathlib.Path(self.directory)
+            for item in sorted(select_dir.rglob(self.mask_shortcut), reverse=True):
+                print(f"ярлык -> {item}")
+                list_shortcut.append(item)
+            self.logger.info(f"Найдено ярлыков: {len(list_shortcut)}")
+            return list_shortcut
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении списка ярлыков: {e}")
+            return []
+
+    def rename_prefix(self, file: pathlib.Path) -> bool:
+        """переименовывает дату в префиксе имени файла"""
+        old_name = file.name
+        dateobj = datetime.strptime(old_name[:8], '%d.%m.%y').date()
+        date_string = dateobj.strftime('%Y.%m.%d')
+        new_name = f"{date_string}{old_name[8:]}"
+        try:
+            os.rename(f'{file}', file.with_name(new_name))
+            print(f'{old_name} переименован --> {new_name}')
+            return True
+        except Exception as e:
+            self.logger.error(f"Ошибка переименования файла {old_name}: {e}")
+            return False
+
+    def rename_files(self) -> Tuple[int, int]:
+        """переименовывает файлы"""
+        success_count = 0
+        failed_count = 0
+        list_files = self.get_files_list()
+
+        for file in list_files:
+            try:
+                if self.rename_prefix(file):
+                    success_count += 1
+                else:
+                    failed_count += 1
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при переименовании {file}: {e}")
+
+        self.logger.info(f"Успешно переименовано: {success_count}, ошибок {failed_count}")
+        return success_count, failed_count
+
+    def rename_target_shorcut(self, lnk_path: pathlib.Path) -> bool:
+        """переименовывает целевой путь ярлыка"""
+        try:
+            shortcut = winshell.shortcut(str(lnk_path))
+            old_target = shortcut.path
+
+            if not old_target == self.mask:
+                return False
+
+            dateobj = datetime.strptime(old_target[:8], '%d.%m.%y').date()
+            date_string = dateobj.strftime('%Y.%m.%d')
+            new_target = f"{date_string}{old_target[8:]}"
+            shortcut.path = new_target
+            shortcut.write()
+            return True
+        except Exception as e:
+            self.logger.error(f"Ошибка переименования целевой путь ярлыка {str(lnk_path)}: {e}")
+            return False
+
+    def modify_shorcuts(self) -> Tuple[int, int]:
+        """изменяет ярлыки"""
+        success_count = 0
+        failed_count = 0
+        list_shortcuts = self.get_shortcut_list()
+
+        for lnk in list_shortcuts:
+            try:
+                if self.rename_target_shorcut(lnk):
+                    success_count += 1
+                else:
+                    failed_count += 1
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при модификации ярлыка {lnk}: {e}")
+
+        self.logger.info(f"Успешно модифицировано ярлыков: {success_count}, ошибок {failed_count}")
+        return success_count, failed_count
+
+# ===========================================================================
 def get_list_dirs_files(name_dir: str, mask: str = '*') -> list:
     """
     получает список каталогов/файлов
