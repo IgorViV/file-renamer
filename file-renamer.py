@@ -5,7 +5,15 @@ import logging
 from datetime import datetime
 import winshell
 
-logging.basicConfig(level=logging.INFO, filename='renamer_log.log', filemode='w', format='%(asctime)s %(levelname)s %(message)s')
+def setup_logging():
+    'настраивает логирование'
+    log_filename = f"renamer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+logging.basicConfig(
+    level=logging.INFO,
+    filename='renamer_log.log',
+    filemode='w',
+    format='%(asctime)s %(levelname)s %(message)s'
+)
 logging.debug('A DEBUG Message')
 logging.info('An INFO')
 logging.warning('A WARNING')
@@ -22,10 +30,10 @@ TITLE_CLI = '''=====================================
 даты в префиксе наименования каталога/файла, ярлыков
 '''
 
-def get_list_dirs_files(name_dir: str, mask: str = '*') -> list[list]:
+def get_list_dirs_files(name_dir: str, mask: str = '*') -> list:
     'получает список каталогов/файлов с учетом вложенных и отдельно ярлыков'
     list_files = []
-    list_labels = []
+    # list_labels = []
     if not os.path.isdir(name_dir.strip('"')):
         raise Exception('Указанный вами каталог не существует!')
     select_dir = pathlib.Path(name_dir.strip('"'))
@@ -35,8 +43,8 @@ def get_list_dirs_files(name_dir: str, mask: str = '*') -> list[list]:
             list_files.append(item)
         else:
             print(f"Ярлык -> {item}")
-            list_labels.append(item)
-    return [list_files, list_labels]
+            list_files.append(item)
+    return list_files
 
 def set_ending(quantity: int, word: str, first_change_word: str, second_change_word: str) -> str:
     '''устанавливает необходимое окончание слова, например:
