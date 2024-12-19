@@ -117,6 +117,10 @@ class FileRenamer:
             dateobj = datetime.strptime(old_target[:8], '%d.%m.%y').date()
             date_string = dateobj.strftime('%Y.%m.%d')
             new_target = f"{date_string}{old_target[8:]}"
+
+            if not os.path.exists(os.path.dirname(new_target)):
+                raise FileNotFoundError(f"Путь назначения не существует: {new_target}")
+
             shortcut.path = new_target
             shortcut.write()
             return True
