@@ -1,3 +1,4 @@
+# создание фейковых директорий и файлов
 import os
 import random
 import platform
@@ -29,15 +30,12 @@ def create_mock_directories(base_path: str, current_depth: int = 0, max_depth: i
     # cоздаем каталог для ярлыков на текущем уровне
     shortcuts_dir = os.path.join(base_path, f"{date_prefix} shortcuts")
     os.makedirs(shortcuts_dir, exist_ok=True)
-    # test_files.append(shortcuts_dir)
-    # print('Test lnk dir:', test_files)
 
     # cоздаем от 1 до 3 подкаталогов на каждом уровне
     for index_dir in range(random.randint(1, 3)):
         dir_name = f"{date_prefix} folder-{index_dir}"
         dir_path = os.path.join(base_path, dir_name)
         os.makedirs(dir_path, exist_ok=True)
-        # test_files.append(dir_path)
 
         for index_file in range(random.randint(1, 3)):
             file_name = f"{date_prefix} file-{index_file}.txt"
@@ -45,13 +43,11 @@ def create_mock_directories(base_path: str, current_depth: int = 0, max_depth: i
 
             with open(file_path, 'w') as f:
                 f.write(f"Этот {index_file} файл создан {datetime.now()}")
-            # test_files.append(file_path)
 
             # cоздаем ярлык для файла
             shortcut_name = f"{date_prefix} shortcut_to_file_{index_file}.lnk"
             shortcut_path = os.path.join(shortcuts_dir, shortcut_name)
-            create_shortcut(file_path, shortcut_path)
-            # test_files.append(shortcut_path)
+            create_shortcut(os.path.join(os.getcwd(), file_path), shortcut_path)
 
         create_mock_directories(dir_path, current_depth + 1, max_depth)
 
