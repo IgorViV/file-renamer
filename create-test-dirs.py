@@ -76,6 +76,8 @@ def create_mock_directories(base_path: str, current_depth: int = 0, max_depth: i
 clear_screen()
 print(f"\n{Fore.YELLOW}Утилита для создания тестовых каталогов, файлов и ярлыков.")
 print(Style.RESET_ALL)
+print("В текущем каталоге будет созданы фейковые каталоги, файлы и ярлыки для проверки работы утилиты file-renamer.")
+input("\nНажмите Enter для продолжения ...")
 
 remove_mock_directories(TEST_DIR)
 
@@ -85,7 +87,6 @@ for dir_path, dir_names, file_names in os.walk(TEST_DIR):
     for cur_dir in dir_names:
         test_files.append(cur_dir)
     for file in file_names:
-        # full_path = os.path.join(dir_path, file)
         test_files.append(file)
 
 print(f"Создано {len(test_files)} файлов")
