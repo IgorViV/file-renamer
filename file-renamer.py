@@ -15,6 +15,7 @@ from colorama import init, Fore, Back, Style
 MASK_FILTER_FILE = '[0-3][0-9].[0-1][0-9].[0-9][0-9] *'
 MASK_FILTER_SHORTCUT = '*.lnk'
 def clear_screen():
+    """очищает экран"""
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def setup_logging():
@@ -81,7 +82,7 @@ class FileRenamer:
         new_name = f"{date_string}{old_name[8:]}"
         try:
             os.rename(f'{file}', file.with_name(new_name))
-            print(f'{old_name} переименован --> {new_name}')
+            # print(f'{old_name} переименован --> {new_name}')
             return True
         except Exception as e:
             self.logger.error(f"Ошибка переименования файла {old_name}: {e}")
@@ -268,71 +269,6 @@ class FileRenamerTests(unittest.TestCase):
         self.assertEqual(success_count, len(self.test_files))
         self.assertEqual(failed_count, 0)
 
-
-# ===========================================================================
-# def get_list_dirs_files(name_dir: str, mask: str = '*') -> list:
-#     """
-#     получает список каталогов/файлов
-#     с учетом вложенных
-#     """
-#     list_files = []
-#     if not os.path.isdir(name_dir.strip('"')):
-#         raise Exception('Указанный вами каталог не существует!')
-#     select_dir = pathlib.Path(name_dir.strip('"'))
-#     for item in sorted(select_dir.rglob(mask), reverse=True):
-#         if str(item)[-4:] != '.lnk':
-#             print(f"{'[папка]' if item.is_dir() else '->'} {item}")
-#             list_files.append(item)
-#         else:
-#             print(f"Ярлык -> {item}")
-#             list_files.append(item)
-#     return list_files
-#
-# def set_ending(quantity: int, word: str, first_change_word: str, second_change_word: str) -> str:
-#     """
-#     устанавливает необходимое окончание слова,
-#     например: 11 файлов, 1 файл, 3 файла
-#     """
-#     if quantity in (11, 12, 13, 14):
-#         return word
-#     elif quantity % 10 == 1:
-#         return first_change_word
-#     elif quantity % 10 in (2, 3, 4):
-#         return second_change_word
-#     else:
-#         return word
-#
-# def rename_prefix(file: pathlib.Path):
-#     """переименовывает дату в префиксе имени файла"""
-#     name_file = file.name
-#     date_in_name = name_file[:8]
-#     dateobj = datetime.strptime(date_in_name, '%d.%m.%y').date()
-#     date_string = dateobj.strftime('%Y.%m.%d')
-#     try:
-#         os.rename(f'{file}', file.with_name(f'{date_string}{name_file[8:]}'))
-#     except Exception as e:
-#         print(e)
-#         logging.exception(e)
-#     else:
-#         print(f'{file} переименован --> {date_string}{name_file[8:]}')
-#
-# def rename_files(list_files: list):
-#     """переименовывает файлы"""
-#     for file in list_files:
-#         rename_prefix(file)
-#     print(f"Переименовано {len(list_files)} файлов")
-# def rename_label_files(list_label_files: list):
-#     """переименовывает ярлыки файлов"""
-#     print(list_label_files)
-#     for label in list_label_files:
-#         try:
-#             # shortcut = winshell.shortcut(str(label))
-#             # print('Ссылка ярлыка:', shortcut.path)
-#             print('Temp print')
-#         except Exception as e:
-#             print(e)
-#             logging.exception(e)
-
 def main_menu():
     """главное меню консольного приложения"""
     init()
@@ -347,8 +283,6 @@ def main_menu():
         print("3. Справка")
         print("4. Выход")
         print(Style.RESET_ALL)
-
-        items = []
 
         choice = input("\nВыберите действие (1-4): ")
         print(Style.RESET_ALL)
@@ -397,14 +331,19 @@ def main_menu():
             clear_screen()
             print(f"{Fore.GREEN}О программе")
             print(Style.RESET_ALL)
-            print("=====================================")
+            print(f"{Fore.YELLOW}=====================================")
             print("| Утилита для переименования файлов |")
-            print("|           ver. 0.1.1              |")
+            print("|           ver. 0.1.2              |")
             print("=====================================")
+            print(Style.RESET_ALL)
             print("Это утилита для изменения формата записи даты в")
             print("префиксе наименования файлов и ссылок в ярлыках:")
             print("- формат записи даты ДД.ММ.ГГ в имени каталога")
             print("(файла, ссылки) будет изменен на ГГГГ.ММ.ДД.")
+            print("\nПорядок использования:")
+            print("- сначала переименовываем файлы;")
+            print("- затем переименовываем ссылки в ярлыках.")
+            print("* может возникнуть ошибка, если файл на который ярлык будет ссылаться еще не переименован.")
 
             input("\nНажмите Enter для продолжения ...")
 

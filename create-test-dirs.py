@@ -1,12 +1,34 @@
-# создание фейковых директорий и файлов
+# создание тестовых каталогов, файлов и ярлыков
 import os
 import random
 import platform
 from win32com.client import Dispatch
 from datetime import datetime, timedelta
+from colorama import init, Fore, Back, Style
 
-test_dir = 'temp_dir'
+TEST_DIR = 'temp_dir'
 test_files = []
+init()
+
+def clear_screen():
+    """очищает экран"""
+    os.system('cls' if os.name == 'nt' else 'clear')
+def remove_mock_directories(test_dir: str):
+    """удаляет тестовый каталог"""
+    if not os.path.exists(test_dir):
+        return
+
+    try:
+        for root, dirs, files in os.walk(test_dir, topdown=False):
+            for name in files:
+                os.remove(os.path.join(root, name))
+            for name in dirs:
+                os.rmdir(os.path.join(root, name))
+        os.rmdir(test_dir)
+    except PermissionError:
+        print("Нет прав доступа на удаление тестового каталога")
+    except Exception as e:
+        print(f"Произошла ошибка удаления тестовой каталога: {e}")
 
 def create_shortcut(target_path, shortcut_path):
     """создает ярлык файла
@@ -51,14 +73,20 @@ def create_mock_directories(base_path: str, current_depth: int = 0, max_depth: i
 
         create_mock_directories(dir_path, current_depth + 1, max_depth)
 
-create_mock_directories(test_dir)
+clear_screen()
+print(f"\n{Fore.YELLOW}Утилита для создания тестовых каталогов, файлов и ярлыков.")
+print(Style.RESET_ALL)
 
-for dir_path, dir_names, file_names in os.walk(test_dir):
+remove_mock_directories(TEST_DIR)
+
+create_mock_directories(TEST_DIR)
+
+for dir_path, dir_names, file_names in os.walk(TEST_DIR):
     for cur_dir in dir_names:
         test_files.append(cur_dir)
     for file in file_names:
         # full_path = os.path.join(dir_path, file)
         test_files.append(file)
 
-
 print(f"Создано {len(test_files)} файлов")
+input("\nДля выхода нажмите Enter ...")
