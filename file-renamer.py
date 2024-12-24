@@ -132,9 +132,6 @@ class FileRenamer:
             old_target = shortcut.path
             os.remove(str(lnk_path))
 
-            # if not old_target == self.mask:
-            #     return False
-
             new_target = self.update_folder_dates(old_target)
 
             if not os.path.exists(os.path.dirname(new_target)):
