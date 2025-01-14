@@ -1,6 +1,6 @@
 from pathlib import Path
 
-old_path = Path("/home/user/documents")
+old_path = Path("/home/dir-1/dir-2-new")
 new_path = Path("/home/dir-1/dir-2/dir-3")
 
 # Что надо реализовать
