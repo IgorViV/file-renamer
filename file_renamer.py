@@ -1,9 +1,9 @@
 import os
 import time
-import pathlib
 import logging
 import winshell
 import re
+from pathlib import Path
 from datetime import datetime, timedelta
 from win32com.client import Dispatch
 from typing import List, Tuple
@@ -11,6 +11,11 @@ from colorama import init, Fore, Back, Style
 
 MASK_FILTER_FILE = '[0-3][0-9].[0-1][0-9].[0-9][0-9] *'
 MASK_FILTER_SHORTCUT = '*.lnk'
+DATE_FORMAT_INPUT = '%d.%m.%y'
+DATE_FORMAT_OUTPUT = '%Y.%m.%d'
+# SEARCH_DIR = 'R:\\Departments\\САЦ\\SAC-DB'
+SEARCH_DIR = 'E:\\_Projects\\python\\file-renamer\\temp_dir'
+
 def clear_screen():
     """очищает экран"""
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -30,9 +35,11 @@ def setup_logging():
     )
 class FileRenamer:
     def __init__(self, directory: str):
-        self.directory = directory.strip('"')
+        self.directory = Path(directory.strip('"'))
         self.mask = MASK_FILTER_FILE
         self.mask_shortcut = MASK_FILTER_SHORTCUT
+        self.date_f_input = DATE_FORMAT_INPUT
+        self.date_f_output = DATE_FORMAT_OUTPUT
         self.logger = logging.getLogger(__name__)
 
     def validate_directory(self) -> bool:
@@ -42,11 +49,11 @@ class FileRenamer:
             return False
         return True
 
-    def get_files_list(self) -> List[pathlib.Path]:
+    def get_files_list(self) -> List[Path]:
         """получает список файлов в каталоге"""
         list_files = []
         try:
-            select_dir = pathlib.Path(self.directory)
+            select_dir = self.directory
             for item in sorted(select_dir.rglob(self.mask), reverse=True):
                 print(f"{'[папка]' if item.is_dir() else '->'} {item}")
                 list_files.append(item)
@@ -56,11 +63,11 @@ class FileRenamer:
             self.logger.error(f"Ошибка при получении списка файлов: {e}")
             return []
 
-    def get_shortcut_list(self) -> List[pathlib.Path]:
+    def get_shortcut_list(self) -> List[Path]:
         """получает список ярлыков в каталоге"""
         list_shortcut = []
         try:
-            select_dir = pathlib.Path(self.directory)
+            select_dir = self.directory
             for item in sorted(select_dir.rglob(self.mask_shortcut), reverse=True):
                 print(f"ярлык -> {item}")
                 list_shortcut.append(item)
@@ -70,11 +77,11 @@ class FileRenamer:
             self.logger.error(f"Ошибка при получении списка ярлыков: {e}")
             return []
 
-    def rename_prefix(self, file: pathlib.Path) -> bool:
+    def rename_prefix(self, file: Path) -> bool:
         """переименовывает дату в префиксе имени файла"""
         old_name = file.name
-        dateobj = datetime.strptime(old_name[:8], '%d.%m.%y').date()
-        date_string = dateobj.strftime('%Y.%m.%d')
+        dateobj = datetime.strptime(old_name[:8], self.date_f_input).date()
+        date_string = dateobj.strftime(self.date_f_output)
         new_name = f"{date_string}{old_name[8:]}"
         try:
             os.rename(f'{file}', file.with_name(new_name))
@@ -113,20 +120,21 @@ class FileRenamer:
 
         for name_part in file_name_parts:
             if pattern.match(name_part):
-                dateobj = datetime.strptime(name_part[:8], '%d.%m.%y').date()
-                date_string = dateobj.strftime('%Y.%m.%d')
+                dateobj = datetime.strptime(name_part[:8], self.date_f_input).date()
+                date_string = dateobj.strftime(self.date_f_output)
                 new_name_part = name_part.replace(name_part[:8], date_string)
                 new_path = new_path + new_name_part + '\\'
             else:
                 new_path = new_path + name_part + '\\'
 
         return os.path.dirname(new_path)
-    def rename_target_shorcut(self, lnk_path: pathlib.Path) -> bool:
+    def rename_target_shorcut(self, lnk_path: Path) -> bool:
         """переименовывает целевой путь ярлыка"""
         try:
             shortcut = winshell.shortcut(str(lnk_path))
             old_target = shortcut.path
             os.remove(str(lnk_path))
+            # lnk_path.unlink(missing_ok=True)
 
             new_target = self.update_folder_dates(old_target)
 
@@ -165,14 +173,54 @@ class FileRenamer:
 
 class DirRenamer:
     def __init__(self, cur_directory: str):
-        self.cur_dir = cur_directory.strip('"')
+        self.mask_shortcut = MASK_FILTER_SHORTCUT
+        self.cur_dir = Path(cur_directory.strip('"'))
+        self.search_dir = Path(SEARCH_DIR)
+        self.shell = Dispatch('WScript.Shell')
         self.logger = logging.getLogger(__name__)
+
     def validate_directory(self) -> bool:
         """проверяет существование каталога"""
-        if not os.path.exists(self.cur_dir):
+
+        if not self.cur_dir.exists():
             self.logger.error(f"Указанный вами каталог {self.cur_dir} не существует")
             return False
         return True
+
+    def validate_search_directory(self) -> bool:
+        """проверяет существование каталога"""
+
+        if not self.search_dir.exists():
+            self.logger.error(f"Указанный вами каталог {self.search_dir} не существует")
+            return False
+        return True
+
+    def get_shortcut_target(self, shortcut_path: str) -> str | None:
+        """получает целевой путь ярлыка"""
+        try:
+            shortcut = self.shell.CreateShortCut(str(shortcut_path))
+            return shortcut.Targetpath
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении целевого пути ярлыка: {e}")
+            return None
+
+    def find_shortcuts(self) -> list[str] | None:
+        """поиск ярлыков для целевого каталога в указанной директории"""
+
+        shortcuts_found = []
+
+        try:
+            search_dir = self.search_dir
+            for item in sorted(search_dir.rglob(self.mask_shortcut), reverse=True):
+                print(f"ярлык -> {item}")
+                print(f"ЦелевоЙ путь ярлыка -> {self.get_shortcut_target(item)}")
+                shortcuts_found.append(item)
+            self.logger.info(f"Найдено ярлыков: {len(shortcuts_found)}")
+            return shortcuts_found
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении списка ярлыков: {e}")
+            return None
+
 
 def main_menu():
     """главное меню консольного приложения"""
@@ -185,7 +233,7 @@ def main_menu():
         print(f"{Fore.YELLOW}=== Утилита для переименования файлов ===")
         print("1. Переименование файлов (изменение префикса - даты)")
         print("2. Переименование ссылок (изменение префикса - даты) в ярлыках")
-        print("3. Переименование каталога")
+        print("3. Переименование ссылок в ярлыках при изменении каталога")
         print("4. Справка")
         print("5. Выход")
         print(Style.RESET_ALL)
@@ -202,6 +250,7 @@ def main_menu():
             renamer = FileRenamer(ask_path_dir)
 
             if not renamer.validate_directory():
+                input("\nНажмите Enter для продолжения ...")
                 continue
 
             if ask_path_dir.strip('"') == '.':
@@ -222,6 +271,7 @@ def main_menu():
             renamer_lnk = FileRenamer(ask_dir_lnk)
 
             if not renamer_lnk.validate_directory():
+                input("\nНажмите Enter для продолжения ...")
                 continue
 
             if ask_dir_lnk.strip('"') == '.':
@@ -235,7 +285,7 @@ def main_menu():
 
         elif choice == '3':
             clear_screen()
-            print(f"{Fore.GREEN}Переименование каталога")
+            print(f"{Fore.GREEN}Переименование ссылок в ярлыках при изменении каталога")
             print(Style.RESET_ALL)
 
             ask_current_path_dir = input("Введите текущий путь к изменяемому каталогу: ")
@@ -243,9 +293,16 @@ def main_menu():
             dir_renamer = DirRenamer(ask_current_path_dir)
 
             if not dir_renamer.validate_directory():
+                input("\nНажмите Enter для продолжения ...")
                 continue
 
-            ask_new_path_dir = input("Введите новый путь к каталогу: ")
+            if not dir_renamer.validate_search_directory():
+                input("\nНажмите Enter для продолжения ...")
+                continue
+
+            dir_renamer.find_shortcuts()
+
+            # ask_new_path_dir = input("Введите новый путь к каталогу: ")
             # определить разницу между путями: какой элемент отличается или отсутсвует
 
             input("\nНажмите Enter для продолжения ...")
@@ -256,18 +313,21 @@ def main_menu():
             print(Style.RESET_ALL)
             print(f"{Fore.YELLOW}=====================================")
             print("| Утилита для переименования файлов |")
-            print("|           ver. 0.1.2              |")
+            print("|           ver. 0.1.3              |")
             print("=====================================")
             print(Style.RESET_ALL)
-            print("Это утилита для изменения формата записи даты в")
-            print("префиксе наименования файлов и ссылок в ярлыках:")
-            print("- формат записи даты ДД.ММ.ГГ в имени каталога")
-            print("(файла, ссылки) будет изменен на ГГГГ.ММ.ДД.")
+            print(f"{Fore.GREEN}Это утилита позволяет:")
+            print("1. Изменить формат записи даты в префиксе наименования файлов и ссылок в ярлыках:")
+            print("- формат записи даты ДД.ММ.ГГ в имени каталога (файла, ссылки) будет изменен на ГГГГ.ММ.ДД.")
+            print("2. Переименовать ссылки в ярлыках, ссылающихся на каталог при изменении его наименования (пути к нему).")
+            print(Style.RESET_ALL)
             print("\nПорядок использования:")
+            print("1. Изменение формата записи даты:")
             print("- сначала переименовываем файлы;")
             print("- затем переименовываем ссылки в ярлыках.")
-            print("* может возникнуть ошибка, если файл на который ярлык будет ссылаться еще не переименован.")
-
+            print("  * может возникнуть ошибка, если файл на который ярлык будет ссылаться еще не переименован.")
+            print("\n2. Переименование ссылок в ярлыках при изменении каталога:")
+            print("- сначала задаем текущий путь к изменяемому каталогу;")
             input("\nНажмите Enter для продолжения ...")
 
         elif choice == '5':

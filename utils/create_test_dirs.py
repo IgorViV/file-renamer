@@ -73,21 +73,26 @@ def create_mock_directories(base_path: str, current_depth: int = 0, max_depth: i
 
         create_mock_directories(dir_path, current_depth + 1, max_depth)
 
-clear_screen()
-print(f"\n{Fore.YELLOW}Утилита для создания тестовых каталогов, файлов и ярлыков.")
-print(Style.RESET_ALL)
-print("В текущем каталоге будет созданы фейковые каталоги, файлы и ярлыки для проверки работы утилиты file-renamer.")
-input("\nНажмите Enter для продолжения ...")
+def main():
+    clear_screen()
+    print(f"\n{Fore.YELLOW}Утилита для создания тестовых каталогов, файлов и ярлыков.")
+    print(Style.RESET_ALL)
+    print(
+        "В текущем каталоге будет созданы фейковые каталоги, файлы и ярлыки для проверки работы утилиты file-renamer.")
+    input("\nНажмите Enter для продолжения ...")
 
-remove_mock_directories(TEST_DIR)
+    remove_mock_directories(TEST_DIR)
 
-create_mock_directories(TEST_DIR)
+    create_mock_directories(TEST_DIR)
 
-for dir_path, dir_names, file_names in os.walk(TEST_DIR):
-    for cur_dir in dir_names:
-        test_files.append(cur_dir)
-    for file in file_names:
-        test_files.append(file)
+    for dir_path, dir_names, file_names in os.walk(TEST_DIR):
+        for cur_dir in dir_names:
+            test_files.append(cur_dir)
+        for file in file_names:
+            test_files.append(file)
 
-print(f"Создано {len(test_files)} файлов")
-input("\nДля выхода нажмите Enter ...")
+    print(f"Создано {len(test_files)} файлов")
+    input("\nДля выхода нажмите Enter ...")
+
+if __name__ == '__main__':
+    main()

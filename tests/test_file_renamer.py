@@ -13,7 +13,7 @@ class FileRenamerTests(unittest.TestCase):
         self.test_dir = Path('test_directory')
         self.test_files = []
 
-        if not os.path.exists(self.test_dir):
+        if not self.test_dir.exists():
             self.test_dir.mkdir()
 
         def create_shortcut(target_path, shortcut_path):
