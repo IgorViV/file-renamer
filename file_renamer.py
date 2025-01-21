@@ -13,8 +13,8 @@ MASK_FILTER_FILE = '[0-3][0-9].[0-1][0-9].[0-9][0-9] *'
 MASK_FILTER_SHORTCUT = '*.lnk'
 DATE_FORMAT_INPUT = '%d.%m.%y'
 DATE_FORMAT_OUTPUT = '%Y.%m.%d'
-# SEARCH_DIR = 'R:\\Departments\\САЦ\\SAC-DB'
-SEARCH_DIR = 'E:\\_Projects\\python\\file-renamer\\temp_dir'
+SEARCH_DIR = 'R:\\Departments\\САЦ\\SAC-DB'
+# SEARCH_DIR = 'E:\\_Projects\\python\\file-renamer\\temp_dir'
 
 def clear_screen():
     """очищает экран"""
@@ -188,12 +188,20 @@ class DirRenamer:
         return True
 
     def validate_search_directory(self) -> bool:
-        """проверяет существование каталога"""
+        """проверяет существование каталога области поиска"""
 
         if not self.search_dir.exists():
-            self.logger.error(f"Указанный вами каталог {self.search_dir} не существует")
+            self.logger.error(f"Указанный вами каталог области поиска  {self.search_dir} не существует")
             return False
         return True
+
+    def get_current_search_dir(self) -> Path:
+        """получает текущий каталог области поиска"""
+        return self.search_dir
+
+    def modify_search_dir(self, new_dir: str):
+        """изменяет каталог области поиска"""
+        self.search_dir = Path(new_dir.strip('"'))
 
     def get_shortcut_target(self, shortcut_path: str) -> str | None:
         """получает целевой путь ярлыка"""
@@ -211,8 +219,8 @@ class DirRenamer:
 
         try:
             search_dir = self.search_dir
-            for item in sorted(search_dir.rglob(self.mask_shortcut), reverse=True):
-                print(f"ярлык -> {item}")
+            for item in sorted(search_dir.rglob(self.mask_shortcut)):
+                print(f"              ярлык -> {item}")
                 print(f"ЦелевоЙ путь ярлыка -> {self.get_shortcut_target(item)}")
                 shortcuts_found.append(item)
             self.logger.info(f"Найдено ярлыков: {len(shortcuts_found)}")
@@ -227,6 +235,7 @@ def main_menu():
     init()
     setup_logging()
     logger = logging.getLogger(__name__)
+    shortcuts_list = []
 
     while True:
         clear_screen()
@@ -296,11 +305,25 @@ def main_menu():
                 input("\nНажмите Enter для продолжения ...")
                 continue
 
+            while True:
+                print(f"Поиск ярлыков будет производится в {dir_renamer.get_current_search_dir()}")
+                ask_modify_search_dir = input("Хотите изменить каталог области поиска, введите 1, иначе - Enter: ")
+                if ask_modify_search_dir == '1':
+                    new_search_dir = input("Введите новый каталог области поиска: ")
+                    dir_renamer.modify_search_dir(new_search_dir)
+                else:
+                    break
+
             if not dir_renamer.validate_search_directory():
                 input("\nНажмите Enter для продолжения ...")
                 continue
 
-            dir_renamer.find_shortcuts()
+            shortcuts_list = dir_renamer.find_shortcuts()
+
+            if not shortcuts_list:
+                print("Ошибка при поиске ярлыков")
+                input("\nНажмите Enter для продолжения ...")
+                continue
 
             # ask_new_path_dir = input("Введите новый путь к каталогу: ")
             # определить разницу между путями: какой элемент отличается или отсутсвует
