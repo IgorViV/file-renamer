@@ -1,8 +1,10 @@
 import os
+import sys
 import time
 import logging
 import winshell
 import re
+import threading
 from pathlib import Path
 from datetime import datetime, timedelta
 from win32com.client import Dispatch
@@ -195,6 +197,12 @@ class DirRenamer:
             return False
         return True
 
+    def path_is_dir(self) -> bool:
+        """проверяет что путь ведет к каталогу"""
+        if self.cur_dir.is_dir():
+            return True
+        return False
+
     def get_current_search_dir(self) -> Path:
         """получает текущий каталог области поиска"""
         return self.search_dir
@@ -216,13 +224,32 @@ class DirRenamer:
         """поиск ярлыков для целевого каталога в указанной директории"""
 
         shortcuts_found = []
+        is_done = False
+
+        def animate():
+            """анимация процесса выполнения"""
+            chars = "/-\\|"
+            for item in range(20000000):
+                if is_done:
+                    break
+                for char in chars:
+                    sys.stdout.write('\r' + 'Выполняется поиск ...' + char)
+                    sys.stdout.flush()
+                    time.sleep(0.1)
+            sys.stdout.write('\r' + 'Поиск завершен: ' + '\n')
 
         try:
             search_dir = self.search_dir
+            # print("Выполняется поиск ярлыков ...")
+            t = threading.Thread(target=animate)
+            t.start()
+            # time.sleep(15)
+
             for item in sorted(search_dir.rglob(self.mask_shortcut)):
-                print(f"              ярлык -> {item}")
-                print(f"ЦелевоЙ путь ярлыка -> {self.get_shortcut_target(item)}")
+                # print(f"              ярлык -> {item}")
+                # print(f"ЦелевоЙ путь ярлыка -> {self.get_shortcut_target(item)}")
                 shortcuts_found.append(item)
+            is_done = True
             self.logger.info(f"Найдено ярлыков: {len(shortcuts_found)}")
             return shortcuts_found
         except Exception as e:
@@ -306,8 +333,12 @@ def main_menu():
                 continue
 
             while True:
+                clear_screen()
+                print(f"{Fore.GREEN}Переименование ссылок в ярлыках при изменении каталога")
+                print(Style.RESET_ALL)
+
                 print(f"Поиск ярлыков будет производится в {dir_renamer.get_current_search_dir()}")
-                ask_modify_search_dir = input("Хотите изменить каталог области поиска, введите 1, иначе - Enter: ")
+                ask_modify_search_dir = input("Хотите изменить каталог области поиска - введите 1, продолжить без изменения - Enter: ")
                 if ask_modify_search_dir == '1':
                     new_search_dir = input("Введите новый каталог области поиска: ")
                     dir_renamer.modify_search_dir(new_search_dir)
@@ -318,15 +349,34 @@ def main_menu():
                 input("\nНажмите Enter для продолжения ...")
                 continue
 
+            while True:
+                clear_screen()
+                print(f"{Fore.GREEN}Переименование ссылок в ярлыках при изменении каталога")
+                print(Style.RESET_ALL)
+
+                print(f"Выполните требуемые изменения каталога {dir_renamer.get_current_search_dir()}, и ...")
+                ask_new_path_dir = input("Введите новый путь к каталогу: ")
+                new_path_dir = Path(ask_new_path_dir.strip('"'))
+                if not new_path_dir.exists():
+                    logger.error(f"Указанный вами новый каталог {new_path_dir} не существует, вы не сделали изменения")
+                    input("\nНажмите Enter для продолжения ...")
+                    continue
+                else:
+                    break
+
+            print(f"Новый каталог {str(new_path_dir)}")
+            # определить разницу между путями: какой элемент отличается или отсутсвует
+
+
+            start_time = time.perf_counter()
             shortcuts_list = dir_renamer.find_shortcuts()
+            search_time = time.perf_counter() - start_time
+            print(f"Время поиска: {search_time} секунд")
 
             if not shortcuts_list:
                 print("Ошибка при поиске ярлыков")
                 input("\nНажмите Enter для продолжения ...")
                 continue
-
-            # ask_new_path_dir = input("Введите новый путь к каталогу: ")
-            # определить разницу между путями: какой элемент отличается или отсутсвует
 
             input("\nНажмите Enter для продолжения ...")
 
