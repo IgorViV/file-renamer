@@ -4,7 +4,7 @@ import time
 import logging
 import winshell
 import re
-from pathlib import Path
+from pathlib import Path, WindowsPath
 from datetime import datetime, timedelta
 from win32com.client import Dispatch
 from typing import List, Tuple, Dict, Optional
@@ -70,6 +70,119 @@ class FileAccessChecker:
             return os.access(path, os.R_OK | os.W_OK | os.X_OK)
         except Exception:
             return False
+
+class WindowsPathHandler:
+    """обработка путей Windows"""
+
+    MAX_PATH_LENGTH = 260
+    EXTENDED_PREFIX = r"\\?\\"
+
+    @staticmethod
+    def normalize_path(path: str | Path) -> str:
+        """нормализует путь для Windows"""
+        # преобразование Path в строку
+        path_str = str(path)
+
+        # замена прямых слешей на обратные
+        normalized = path_str.replace('/', '\\')
+
+        # удаляем множественные слеши
+        normalized = re.sub(r'\\+', r'\\', normalized)
+
+        # удаляем пробелы в конце
+        normalized = normalized.rstrip()
+
+        return normalized
+
+    @staticmethod
+    def get_extended_path(path: str | Path) -> str:
+        """добавляет префикс для длинных путей Windows"""
+        normalized_path = WindowsPathHandler.normalize_path(path)
+
+        # если путь уже содержит префикс - возвращаем как есть
+        if normalized_path.startswith(WindowsPathHandler.EXTENDED_PREFIX):
+            return normalized_path
+
+        # преобразуем в абсолютный путь
+        abs_path = os.path.abspath(normalized_path)
+
+        # добавляем префикс для длинных путей
+        return f"{WindowsPathHandler.EXTENDED_PREFIX}{abs_path}"
+
+    @staticmethod
+    def is_path_too_long(path: str | Path) -> bool:
+        """проверяет, превышает ли путь максимальную длину"""
+        return len(str(path)) > WindowsPathHandler.MAX_PATH_LENGTH
+
+    @staticmethod
+    def validate_path(path: str | Path) -> tuple[bool, Optional[str]]:
+        """проверяет валидность пути"""
+        try:
+            # проверяем на недопустимые символы
+            invalid_chars = '<>"|?*'
+            path_str = str(path)
+
+            for char in invalid_chars:
+                if char in path_str:
+                    return False, f"Путь содержит недопустимый символ: {char}"
+
+            # зарезервированные имена Windows
+            reserved_names = {
+                'CON', 'PRN', 'AUX', 'NUL',
+                'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+                'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'
+            }
+
+            parts = path_str.split('\\')
+            for part in parts:
+                base_name = part.split('.')[0].upper()
+                if base_name in reserved_names:
+                    return False, f"Путь содержит зарезервированное имя: {part}"
+
+            return True, None
+
+        except Exception as e:
+            return False, str(e)
+
+class SafePathOperation:
+    """безопасное выполнения операций с путями"""
+
+    def __init__(self):
+        self.path_handler = WindowsPathHandler()
+        self.logger = logging.getLogger(__name__)
+
+    def safe_rename(self, old_path: Path, new_path: Path) -> bool:
+        """безопасное переименование с учетом особенностей Windows"""
+        try:
+            # проверяем длину путей
+            if self.path_handler.is_path_too_long(old_path):
+                old_path_str = self.path_handler.get_extended_path(old_path)
+            else:
+                old_path_str = str(old_path)
+
+            if self.path_handler.is_path_too_long(new_path):
+                new_path_str = self.path_handler.get_extended_path(new_path)
+            else:
+                new_path_str = str(new_path)
+
+            # проверяем валидность путей
+            is_valid_old, error_old = self.path_handler.validate_path(old_path)
+            if not is_valid_old:
+                self.logger.error(f"Неверный исходный путь: {error_old}")
+                return False
+
+            is_valid_new, error_new = self.path_handler.validate_path(new_path)
+            if not is_valid_new:
+                self.logger.error(f"Неверный новый путь: {error_new}")
+                return False
+
+            # выполняем переименование
+            os.rename(old_path_str, new_path_str)
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Ошибка при переименовании: {str(e)}")
+            return False
 class FileRenamer:
     def __init__(self, directory: str):
         self.directory = Path(directory.strip('"'))
@@ -79,6 +192,7 @@ class FileRenamer:
         self.date_f_output = DATE_FORMAT_OUTPUT
         self.logger = logging.getLogger(__name__)
         self.access_checker = FileAccessChecker()
+        self.path_operator = SafePathOperation()
 
     def validate_directory(self) -> bool:
         """проверяет существование каталога и права доступа"""
@@ -157,8 +271,8 @@ class FileRenamer:
                 self.logger.error(f"Файл с именем {new_name} уже существует")
                 return False
 
-            os.rename(str(file), str(new_path))
-            return True
+            # os.rename(str(file), str(new_path))
+            return self.path_operator.safe_rename(file, new_path)
 
         except Exception as e:
             self.logger.error(f"Ошибка переименования файла {old_name}: {e}")
@@ -252,6 +366,7 @@ class DirRenamer:
         self.shell = Dispatch('WScript.Shell')
         self.logger = logging.getLogger(__name__)
         self.access_checker = FileAccessChecker()
+        self.path_operator = SafePathOperation()
 
     def validate_directory(self) -> bool:
         """проверяет существование каталога и права доступа"""
@@ -334,7 +449,7 @@ class DirRenamer:
             return None
     def rename_target_shorcut(self, lnk_path: Path, target_before: Path, target_after: Path) -> bool:
         """переименовывает целевой путь ярлыка"""
-
+        temp_link = None
         # проверка права доступа к ярлыку
         if not self.access_checker.check_full_access(lnk_path):
             self.logger.error(f"Недостаточно прав для работы с ярлыком {lnk_path}")
@@ -359,20 +474,22 @@ class DirRenamer:
             if not new_target.exists():
                 raise FileNotFoundError(f"Путь назначения не существует: {str(new_target)}")
 
-                # новый ярлык во временном файле
-                shell = Dispatch('WScript.Shell')
-                new_shortcut = shell.CreateShortCut(str(temp_lnk))
-                new_shortcut.Targetpath = str(new_target)
-                new_shortcut.save()
+            # новый ярлык во временном файле
+            shell = Dispatch('WScript.Shell')
+            new_shortcut = shell.CreateShortCut(
+                # str(temp_lnk)
+                self.path_operator.path_handler.get_extended_path(temp_lnk)
+            )
+            new_shortcut.Targetpath = str(new_target)
+            new_shortcut.save()
 
-                if not temp_lnk.exists():
-                    raise Exception("Не удалось создать новый ярлык")
+            if temp_lnk.exists():
+                return self.path_operator.safe_rename(temp_lnk, lnk_path)
+            return False
 
-                # удаляем старый ярлык и переименовываем временный
-                os.remove(str(lnk_path))
-                os.rename(str(temp_lnk), str(lnk_path))
-
-            return True
+            # удаляем старый ярлык и переименовываем временный
+            # os.remove(str(lnk_path))
+            # os.rename(str(temp_lnk), str(lnk_path))
 
         except Exception as e:
             if temp_lnk and temp_lnk.exists():
