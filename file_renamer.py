@@ -4,11 +4,10 @@ import time
 import logging
 import winshell
 import re
-import threading
 from pathlib import Path
 from datetime import datetime, timedelta
 from win32com.client import Dispatch
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 from colorama import init, Fore, Back, Style
 from utils import change_dir
 
@@ -36,6 +35,41 @@ def setup_logging():
             logging.StreamHandler()
         ]
     )
+
+class FileAccessChecker:
+    """проверка прав доступа к файлам и каталогам"""
+
+    @staticmethod
+    def check_read_access(path: Path) -> bool:
+        """проверяет права на чтение"""
+        try:
+            return os.access(path, os.R_OK)
+        except Exception:
+            return False
+
+    @staticmethod
+    def check_write_access(path: Path) -> bool:
+        """проверяет права на запись"""
+        try:
+            return os.access(path, os.W_OK)
+        except Exception:
+            return False
+
+    @staticmethod
+    def check_execute_access(path: Path) -> bool:
+        """проверяет права на выполнение"""
+        try:
+            return os.access(path, os.X_OK)
+        except Exception:
+            return False
+
+    @staticmethod
+    def check_full_access(path: Path) -> bool:
+        """проверяет полные права доступа"""
+        try:
+            return os.access(path, os.R_OK | os.W_OK | os.X_OK)
+        except Exception:
+            return False
 class FileRenamer:
     def __init__(self, directory: str):
         self.directory = Path(directory.strip('"'))
@@ -44,12 +78,26 @@ class FileRenamer:
         self.date_f_input = DATE_FORMAT_INPUT
         self.date_f_output = DATE_FORMAT_OUTPUT
         self.logger = logging.getLogger(__name__)
+        self.access_checker = FileAccessChecker()
 
     def validate_directory(self) -> bool:
-        """проверяет существование каталога"""
+        """проверяет существование каталога и права доступа"""
         if not os.path.exists(self.directory):
             self.logger.error(f"Указанный вами каталог {self.directory} не существует")
             return False
+
+        if not self.access_checker.check_read_access(self.directory):
+            self.logger.error(f"Нет прав на чтение каталога {self.directory}")
+            return False
+
+        if not self.access_checker.check_write_access(self.directory):
+            self.logger.error(f"Нет прав на запись в каталог {self.directory}")
+            return False
+
+        if not self.access_checker.check_execute_access(self.directory):
+            self.logger.error(f"Нет прав на просмотр содержимого каталога {self.directory}")
+            return False
+
         return True
 
     def get_files_list(self) -> List[Path]:
@@ -83,13 +131,35 @@ class FileRenamer:
     def rename_prefix(self, file: Path) -> bool:
         """переименовывает дату в префиксе имени файла"""
         old_name = file.name
-        dateobj = datetime.strptime(old_name[:8], self.date_f_input).date()
-        date_string = dateobj.strftime(self.date_f_output)
-        new_name = f"{date_string}{old_name[8:]}"
+
+        # проверка права доступа к файлу
+        if not self.access_checker.check_read_access(file):
+            self.logger.error(f"Нет прав на чтение файла {file}")
+            return False
+
+        if not self.access_checker.check_write_access(file):
+            self.logger.error(f"Нет прав на запись файла {file}")
+            return False
+
         try:
-            os.rename(f'{file}', file.with_name(new_name))
-            # print(f'{old_name} переименован --> {new_name}')
+            dateobj = datetime.strptime(old_name[:8], self.date_f_input).date()
+            date_string = dateobj.strftime(self.date_f_output)
+            new_name = f"{date_string}{old_name[8:]}"
+            new_path = file.with_name(new_name)
+
+            # проверка права доступа к родительскому каталогу
+            if not self.access_checker.check_write_access(file.parent):
+                self.logger.error(f"Нет прав на запись в каталог {file.parent}")
+                return False
+
+            # проверка существования файла с новым именем
+            if new_path.exists():
+                self.logger.error(f"Файл с именем {new_name} уже существует")
+                return False
+
+            os.rename(str(file), str(new_path))
             return True
+
         except Exception as e:
             self.logger.error(f"Ошибка переименования файла {old_name}: {e}")
             return False
@@ -181,13 +251,19 @@ class DirRenamer:
         self.search_dir = Path(SEARCH_DIR)
         self.shell = Dispatch('WScript.Shell')
         self.logger = logging.getLogger(__name__)
+        self.access_checker = FileAccessChecker()
 
     def validate_directory(self) -> bool:
-        """проверяет существование каталога"""
+        """проверяет существование каталога и права доступа"""
 
         if not self.cur_dir.exists():
             self.logger.error(f"Указанный вами каталог {self.cur_dir} не существует")
             return False
+
+        if not self.access_checker.check_full_access(self.cur_dir):
+            self.logger.error(f"Недостаточно прав для работы с каталогом {self.cur_dir}")
+            return False
+
         return True
 
     def validate_search_directory(self) -> bool:
@@ -258,26 +334,52 @@ class DirRenamer:
             return None
     def rename_target_shorcut(self, lnk_path: Path, target_before: Path, target_after: Path) -> bool:
         """переименовывает целевой путь ярлыка"""
+
+        # проверка права доступа к ярлыку
+        if not self.access_checker.check_full_access(lnk_path):
+            self.logger.error(f"Недостаточно прав для работы с ярлыком {lnk_path}")
+            return False
+
+        # проверка права доступа к родительскому каталогу
+        if not self.access_checker.check_write_access(lnk_path.parent):
+            self.logger.error(f"Нет прав на запись в каталог {lnk_path.parent}")
+            return False
+
         try:
             shortcut = winshell.shortcut(str(lnk_path))
             old_target = shortcut.path
-            os.remove(str(lnk_path))
-            # lnk_path.unlink(missing_ok=True)
+
+            # временный файл для нового ярлыка
+            temp_lnk = lnk_path.with_name(f"temp_{lnk_path.name}")
 
             new_target = self.make_new_target(old_target, target_before, target_after)
+            if not new_target:
+                return False
 
             if not new_target.exists():
                 raise FileNotFoundError(f"Путь назначения не существует: {str(new_target)}")
 
-            # cоздаем ярлык для файла
-            shell = Dispatch('WScript.Shell')
-            shortcut = shell.CreateShortCut(str(lnk_path))
-            shortcut.Targetpath = str(new_target)
-            shortcut.save()
+                # новый ярлык во временном файле
+                shell = Dispatch('WScript.Shell')
+                new_shortcut = shell.CreateShortCut(str(temp_lnk))
+                new_shortcut.Targetpath = str(new_target)
+                new_shortcut.save()
+
+                if not temp_lnk.exists():
+                    raise Exception("Не удалось создать новый ярлык")
+
+                # удаляем старый ярлык и переименовываем временный
+                os.remove(str(lnk_path))
+                os.rename(str(temp_lnk), str(lnk_path))
 
             return True
+
         except Exception as e:
-            # TODO предусматреть восстановление ярлыка
+            if temp_lnk and temp_lnk.exists():
+                try:
+                    temp_lnk.unlink()
+                except:
+                    pass
 
             self.logger.error(f"Ошибка переименования целевого пути ярлыка {str(lnk_path)}: {e}")
             return False
@@ -306,19 +408,6 @@ def main_menu():
     setup_logging()
     logger = logging.getLogger(__name__)
     shortcuts_list = []
-    is_done = False
-
-    def animate():
-        """анимация процесса выполнения"""
-        chars = "/-\\|"
-        while True:
-            if is_done:
-                break
-            for char in chars:
-                sys.stdout.write('\r' + 'Выполняется поиск ...' + char)
-                sys.stdout.flush()
-                time.sleep(0.1)
-        sys.stdout.write('\r' + 'Поиск завершен: ' + '\n')
 
     def seconds_to_time(seconds: float) -> str:
         """изменяет формат времени"""
@@ -326,9 +415,9 @@ def main_menu():
             return f"{seconds} секунд"
 
         seconds = int(seconds)
-        hours = seconds // 3600  # Получаем часы
-        minutes = (seconds % 3600) // 60  # Получаем минуты
-        seconds = seconds % 60  # Получаем секунды
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        seconds = seconds % 60
 
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
@@ -449,12 +538,6 @@ def main_menu():
 
             start_time = time.perf_counter()
 
-            # t = threading.Thread(target=animate)
-            # t.start()
-            # t.join()
-            # time.sleep(15)
-            # is_done = True
-
             shortcuts_list = dir_renamer.find_shortcuts(diff_path['path_before'], diff_path['path_after'])
 
             search_time = time.perf_counter() - start_time
@@ -481,7 +564,7 @@ def main_menu():
             print("=====================================")
             print(Style.RESET_ALL)
             print(f"{Fore.GREEN}Это утилита позволяет:")
-            print("1. Изменить формат записи даты в префиксе наименования файлов и ссылок в ярлыках:")
+            print("\n1. Изменить формат записи даты в префиксе наименования файлов и ссылок в ярлыках:")
             print("- формат записи даты ДД.ММ.ГГ в имени каталога (файла, ссылки) будет изменен на ГГГГ.ММ.ДД.")
             print("2. Переименовать ссылки в ярлыках, ссылающихся на каталог при изменении его наименования (пути к нему).")
             print(Style.RESET_ALL)
