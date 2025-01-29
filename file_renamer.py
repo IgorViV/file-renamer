@@ -216,34 +216,88 @@ class DirRenamer:
         """изменяет каталог области поиска"""
         self.search_dir = Path(new_dir.strip('"'))
 
-    def get_shortcut_target(self, shortcut_path: str) -> str | None:
+    def get_shortcut_target(self, shortcut_path: Path) -> Path | None:
         """получает целевой путь ярлыка"""
         try:
             shortcut = self.shell.CreateShortCut(str(shortcut_path))
-            return shortcut.Targetpath
+            return Path(shortcut.Targetpath)
         except Exception as e:
             self.logger.error(f"Ошибка при получении целевого пути ярлыка: {e}")
             return None
 
-    def find_shortcuts(self) -> list[str] | None:
+    def find_shortcuts(self, path_before: Path, path_after: Path) -> list[Path]:
         """поиск ярлыков для целевого каталога в указанной директории"""
 
         shortcuts_found = []
 
         try:
             search_dir = self.search_dir
-            print("Выполняется поиск ярлыков ...")
+            print(f"Выполняется поиск ярлыков в ссылках которых есть путь {str(path_before)} ...")
 
-            for item in sorted(search_dir.rglob(self.mask_shortcut)):
-                # print(f"              ярлык -> {item}")
-                # print(f"ЦелевоЙ путь ярлыка -> {self.get_shortcut_target(item)}")
-                shortcuts_found.append(item)
+            for item in sorted(search_dir.rglob(self.mask_shortcut), reverse=True):
+                link_shortcut = self.get_shortcut_target(item)
+                if link_shortcut and link_shortcut.is_relative_to(path_before):
+                    # print(f"              ярлык -> {item}")
+                    # print(f"Целевой путь ярлыка -> {self.get_shortcut_target(item)}")
+                    shortcuts_found.append(item)
 
             self.logger.info(f"Найдено ярлыков: {len(shortcuts_found)}")
             return shortcuts_found
         except Exception as e:
             self.logger.error(f"Ошибка при получении списка ярлыков: {e}")
+            return []
+
+    def make_new_target(self, old_target: str, target_before: Path, target_after: Path) -> Path | None:
+        """подготавливает новую ссылку ярлыка"""
+        try:
+            old_path = Path(old_target)
+            relative = old_path.relative_to(target_before)
+            return target_after / relative
+        except Exception as e:
+            self.logger.error(f"Ошибка при формировании новой ссылки ярлыка: {e}")
             return None
+    def rename_target_shorcut(self, lnk_path: Path, target_before: Path, target_after: Path) -> bool:
+        """переименовывает целевой путь ярлыка"""
+        try:
+            shortcut = winshell.shortcut(str(lnk_path))
+            old_target = shortcut.path
+            os.remove(str(lnk_path))
+            # lnk_path.unlink(missing_ok=True)
+
+            new_target = self.make_new_target(old_target, target_before, target_after)
+
+            if not new_target.exists():
+                raise FileNotFoundError(f"Путь назначения не существует: {str(new_target)}")
+
+            # cоздаем ярлык для файла
+            shell = Dispatch('WScript.Shell')
+            shortcut = shell.CreateShortCut(str(lnk_path))
+            shortcut.Targetpath = str(new_target)
+            shortcut.save()
+
+            return True
+        except Exception as e:
+            # TODO предусматреть восстановление ярлыка
+
+            self.logger.error(f"Ошибка переименования целевого пути ярлыка {str(lnk_path)}: {e}")
+            return False
+
+    def modify_shorcuts(self, list_shortcuts: list[Path], target_before: Path, target_after: Path) -> Tuple[int, int]:
+        """изменяет ярлыки"""
+        success_count = 0
+        failed_count = 0
+        for lnk in list_shortcuts:
+            try:
+                if self.rename_target_shorcut(lnk, target_before, target_after):
+                    success_count += 1
+                else:
+                    failed_count += 1
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при модификации ярлыка {lnk}: {e}")
+
+        self.logger.info(f"Успешно модифицировано ярлыков: {success_count}, ошибок {failed_count}")
+        return success_count, failed_count
 
 
 def main_menu():
@@ -253,6 +307,7 @@ def main_menu():
     logger = logging.getLogger(__name__)
     shortcuts_list = []
     is_done = False
+
     def animate():
         """анимация процесса выполнения"""
         chars = "/-\\|"
@@ -264,6 +319,18 @@ def main_menu():
                 sys.stdout.flush()
                 time.sleep(0.1)
         sys.stdout.write('\r' + 'Поиск завершен: ' + '\n')
+
+    def seconds_to_time(seconds: float) -> str:
+        """изменяет формат времени"""
+        if int(seconds) <= 0:
+            return f"{seconds} секунд"
+
+        seconds = int(seconds)
+        hours = seconds // 3600  # Получаем часы
+        minutes = (seconds % 3600) // 60  # Получаем минуты
+        seconds = seconds % 60  # Получаем секунды
+
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
     while True:
         clear_screen()
@@ -355,7 +422,7 @@ def main_menu():
                 print(f"{Fore.GREEN}Переименование ссылок в ярлыках при изменении каталога")
                 print(Style.RESET_ALL)
 
-                print(f"Выполните требуемые изменения каталога {dir_renamer.get_current_path_dir()}, и ...")
+                print(f"Выполните требуемые изменения каталога {dir_renamer.get_current_path_dir()}, и ...\n")
                 ask_new_path_dir = input("Введите новый путь к каталогу: ")
                 new_path_dir = Path(ask_new_path_dir.strip('"'))
                 if not new_path_dir.exists() and new_path_dir != dir_renamer.get_current_path_dir():
@@ -365,10 +432,10 @@ def main_menu():
                 else:
                     break
 
-            # if new_path_dir == dir_renamer.get_current_path_dir():  # TODO закомментировано на период тестирования
-            #     logger.info(f"Указанный вами новый каталог {new_path_dir} без изменений")
-            #     input("\nНажмите Enter для продолжения ...")
-            #     continue
+            if new_path_dir == dir_renamer.get_current_path_dir():
+                logger.info(f"Указанный вами новый каталог {new_path_dir} без изменений")
+                input("\nНажмите Enter для продолжения ...")
+                continue
 
             print(f"Новый каталог {str(new_path_dir)}")
 
@@ -388,15 +455,19 @@ def main_menu():
             # time.sleep(15)
             # is_done = True
 
-            shortcuts_list = dir_renamer.find_shortcuts()
+            shortcuts_list = dir_renamer.find_shortcuts(diff_path['path_before'], diff_path['path_after'])
 
             search_time = time.perf_counter() - start_time
-            print(f"Время поиска: {search_time} секунд")
+            print(f"Время поиска составило: {seconds_to_time(search_time)}")
 
             if not shortcuts_list:
                 print("Ошибка при поиске ярлыков")
                 input("\nНажмите Enter для продолжения ...")
                 continue
+
+            ask_renamed = input('Хотите переименовать ярлыки - введите 1, продолжить без изменения - Enter: ')
+            if ask_renamed == '1':
+                dir_renamer.modify_shorcuts(shortcuts_list, diff_path['path_before'], diff_path['path_after'])
 
             input("\nНажмите Enter для продолжения ...")
 
@@ -421,6 +492,10 @@ def main_menu():
             print("  * может возникнуть ошибка, если файл на который ярлык будет ссылаться еще не переименован.")
             print("\n2. Переименование ссылок в ярлыках при изменении каталога:")
             print("- сначала задаем текущий путь к изменяемому каталогу;")
+            print("- вносим необходимые изменения пути к изменяемому каталогу;")
+            print("- задаем новый (с изменениями) путь к каталогу;")
+            print("- ждем, когда найдутся все существующие ярлыки завязанные на этот путь;")
+            print("- переименовываем ссылки в найденных ярлыках.")
             input("\nНажмите Enter для продолжения ...")
 
         elif choice == '5':

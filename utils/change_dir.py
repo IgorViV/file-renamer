@@ -9,6 +9,13 @@ def find_diff_path(old_path: Path, new_path: Path) -> dict[str, Path | str] | No
     # max_index: int = 0
     info_msg: str = ''
 
+    if old_path.is_file() and new_path.is_file():
+        diff_path['path_before'] = old_path
+        diff_path['path_after'] = new_path
+        diff_path['info_msg'] = 'Задан путь к файлу'
+
+        return diff_path
+
     # Сравнить части пути
     if old_path.parts != new_path.parts and len(old_path.parts) == len(new_path.parts):
         # Найти различия
