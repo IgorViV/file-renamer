@@ -209,6 +209,49 @@ class FileAccessChecker:
         except Exception:
             return False
 
+class WindowsPathHandler:
+    """обработка путей Windows"""
+
+    MAX_PATH_LENGTH = 260
+    EXTENDED_PREFIX = r"\\?\\"
+
+    @staticmethod
+    def normalize_path(path: str | Path) -> str:
+        """нормализует путь для Windows"""
+        # преобразование Path в строку
+        path_str = str(path)
+
+        # замена прямых слешей на обратные
+        normalized = path_str.replace('/', '\\')
+
+        # удаляем множественные слеши
+        normalized = re.sub(r'\\+', r'\\', normalized)
+
+        # удаляем пробелы в конце
+        normalized = normalized.rstrip()
+
+        return normalized
+
+    @staticmethod
+    def get_extended_path(path: str | Path) -> str:
+        """добавляет префикс для длинных путей Windows"""
+        normalized_path = WindowsPathHandler.normalize_path(path)
+
+        # если путь уже содержит префикс - возвращаем как есть
+        if normalized_path.startswith(WindowsPathHandler.EXTENDED_PREFIX):
+            return normalized_path
+
+        # преобразуем в абсолютный путь
+        abs_path = os.path.abspath(normalized_path)
+
+        # добавляем префикс для длинных путей
+        return f"{WindowsPathHandler.EXTENDED_PREFIX}{abs_path}"
+
+    @staticmethod
+    def is_path_too_long(path: str | Path) -> bool:
+        """проверяет, превышает ли путь максимальную длину"""
+        return len(str(path)) > WindowsPathHandler.MAX_PATH_LENGTH
+
 class DirRenamer:
     def __init__(self, cur_directory: str):
         self.mask_shortcut = MASK_FILTER_SHORTCUT
