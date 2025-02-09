@@ -174,6 +174,41 @@ class FileRenamer:
         self.logger.info(f"Успешно модифицировано ярлыков: {success_count}, ошибок {failed_count}")
         return success_count, failed_count
 
+class FileAccessChecker:
+    """проверка прав доступа к файлам и каталогам"""
+
+    @staticmethod
+    def check_read_access(path: Path) -> bool:
+        """проверяет права на чтение"""
+        try:
+            return os.access(path, os.R_OK)
+        except Exception:
+            return False
+
+    @staticmethod
+    def check_write_access(path: Path) -> bool:
+        """проверяет права на запись"""
+        try:
+            return os.access(path, os.W_OK)
+        except Exception:
+            return False
+
+    @staticmethod
+    def check_execute_access(path: Path) -> bool:
+        """проверяет права на выполнение"""
+        try:
+            return os.access(path, os.X_OK)
+        except Exception:
+            return False
+
+    @staticmethod
+    def check_full_access(path: Path) -> bool:
+        """проверяет полные права доступа"""
+        try:
+            return os.access(path, os.R_OK | os.W_OK | os.X_OK)
+        except Exception:
+            return False
+
 class DirRenamer:
     def __init__(self, cur_directory: str):
         self.mask_shortcut = MASK_FILTER_SHORTCUT
@@ -222,7 +257,7 @@ class DirRenamer:
             shortcut = self.shell.CreateShortCut(str(shortcut_path))
             return Path(shortcut.Targetpath)
         except Exception as e:
-            self.logger.error(f"Ошибка при получении целевого пути ярлыка: {e}")
+            self.logger.error(f"Ошибка при получении целевого пути ярлыка {str(shortcut_path)}: {e}")
             return None
 
     def find_shortcuts(self, path_before: Path, path_after: Path) -> list[Path]:
@@ -236,9 +271,10 @@ class DirRenamer:
 
             for item in sorted(search_dir.rglob(self.mask_shortcut), reverse=True):
                 link_shortcut = self.get_shortcut_target(item)
-                if link_shortcut and link_shortcut.is_relative_to(path_before):
-                    # print(f"              ярлык -> {item}")
-                    # print(f"Целевой путь ярлыка -> {self.get_shortcut_target(item)}")
+                # if link_shortcut and link_shortcut.is_relative_to(path_before):
+                if link_shortcut:
+                    print(f"              ярлык -> {item}")
+                    print(f"Целевой путь ярлыка -> {self.get_shortcut_target(item)}")
                     shortcuts_found.append(item)
 
             self.logger.info(f"Найдено ярлыков: {len(shortcuts_found)}")
@@ -449,12 +485,6 @@ def main_menu():
 
             start_time = time.perf_counter()
 
-            # t = threading.Thread(target=animate)
-            # t.start()
-            # t.join()
-            # time.sleep(15)
-            # is_done = True
-
             shortcuts_list = dir_renamer.find_shortcuts(diff_path['path_before'], diff_path['path_after'])
 
             search_time = time.perf_counter() - start_time
@@ -465,9 +495,10 @@ def main_menu():
                 input("\nНажмите Enter для продолжения ...")
                 continue
 
-            ask_renamed = input('Хотите переименовать ярлыки - введите 1, продолжить без изменения - Enter: ')
-            if ask_renamed == '1':
-                dir_renamer.modify_shorcuts(shortcuts_list, diff_path['path_before'], diff_path['path_after'])
+            #  TODO закомментировано для тестирования
+            # ask_renamed = input('Хотите переименовать ярлыки - введите 1, продолжить без изменения - Enter: ')
+            # if ask_renamed == '1':
+            #     dir_renamer.modify_shorcuts(shortcuts_list, diff_path['path_before'], diff_path['path_after'])
 
             input("\nНажмите Enter для продолжения ...")
 
@@ -483,7 +514,7 @@ def main_menu():
             print(f"{Fore.GREEN}Это утилита позволяет:")
             print("1. Изменить формат записи даты в префиксе наименования файлов и ссылок в ярлыках:")
             print("- формат записи даты ДД.ММ.ГГ в имени каталога (файла, ссылки) будет изменен на ГГГГ.ММ.ДД.")
-            print("2. Переименовать ссылки в ярлыках, ссылающихся на каталог при изменении его наименования (пути к нему).")
+            print("2. Переименовать ссылки в ярлыках при изменении каталога (пути к нему).")
             print(Style.RESET_ALL)
             print("\nПорядок использования:")
             print("1. Изменение формата записи даты:")
