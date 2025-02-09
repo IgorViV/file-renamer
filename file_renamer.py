@@ -5,7 +5,7 @@ import logging
 import winshell
 import re
 import threading
-from pathlib import Path
+from pathlib import Path, WindowsPath
 from datetime import datetime, timedelta
 from win32com.client import Dispatch
 from typing import List, Tuple, Dict
@@ -36,6 +36,90 @@ def setup_logging():
             logging.StreamHandler()
         ]
     )
+
+class FileAccessChecker:
+    """проверка прав доступа к файлам и каталогам"""
+
+    @staticmethod
+    def check_read_access(path: Path) -> bool:
+        """проверяет права на чтение"""
+        try:
+            return os.access(path, os.R_OK)
+        except Exception:
+            return False
+
+    @staticmethod
+    def check_write_access(path: Path) -> bool:
+        """проверяет права на запись"""
+        try:
+            return os.access(path, os.W_OK)
+        except Exception:
+            return False
+
+    @staticmethod
+    def check_execute_access(path: Path) -> bool:
+        """проверяет права на выполнение"""
+        try:
+            return os.access(path, os.X_OK)
+        except Exception:
+            return False
+
+    @staticmethod
+    def check_full_access(path: Path) -> bool:
+        """проверяет полные права доступа"""
+        try:
+            return os.access(path, os.R_OK | os.W_OK | os.X_OK)
+        except Exception:
+            return False
+
+class WindowsPathHandler:
+    """обработка путей Windows"""
+
+    MAX_PATH_LENGTH = 260
+    EXTENDED_PREFIX = "\\\\?\\"
+
+    @staticmethod
+    def normalize_path(path: str | Path) -> str:
+        """нормализует путь для Windows"""
+        # преобразование Path в строку
+        path_str = str(path)
+
+        # замена прямых слешей на обратные
+        normalized = path_str.replace('/', '\\')
+
+        # удаляем множественные слеши
+        normalized = re.sub(r'\\+', r'\\', normalized)
+
+        # удаляем пробелы в конце
+        normalized = normalized.rstrip()
+
+        return normalized
+
+    @staticmethod
+    def get_extended_path(path: str | Path) -> str:
+        """добавляет префикс для длинных путей Windows"""
+        normalized_path = WindowsPathHandler.normalize_path(path)
+
+        # если путь уже содержит префикс - возвращаем как есть
+        if normalized_path.startswith(WindowsPathHandler.EXTENDED_PREFIX):
+            return normalized_path
+
+        # преобразуем в абсолютный путь
+        # abs_path = os.path.abspath(normalized_path)
+
+        path_dir = Path(normalized_path)
+
+        if path_dir.drive:
+            relative_path = str(path_dir.relative_to(path_dir.anchor))
+            return f"{WindowsPathHandler.EXTENDED_PREFIX}{relative_path}"
+
+        return f"{WindowsPathHandler.EXTENDED_PREFIX}{normalized_path}"
+
+    @staticmethod
+    def is_path_too_long(path: str | Path) -> bool:
+        """проверяет, превышает ли путь максимальную длину"""
+        return len(str(path)) > WindowsPathHandler.MAX_PATH_LENGTH
+
 class FileRenamer:
     def __init__(self, directory: str):
         self.directory = Path(directory.strip('"'))
@@ -174,90 +258,14 @@ class FileRenamer:
         self.logger.info(f"Успешно модифицировано ярлыков: {success_count}, ошибок {failed_count}")
         return success_count, failed_count
 
-class FileAccessChecker:
-    """проверка прав доступа к файлам и каталогам"""
-
-    @staticmethod
-    def check_read_access(path: Path) -> bool:
-        """проверяет права на чтение"""
-        try:
-            return os.access(path, os.R_OK)
-        except Exception:
-            return False
-
-    @staticmethod
-    def check_write_access(path: Path) -> bool:
-        """проверяет права на запись"""
-        try:
-            return os.access(path, os.W_OK)
-        except Exception:
-            return False
-
-    @staticmethod
-    def check_execute_access(path: Path) -> bool:
-        """проверяет права на выполнение"""
-        try:
-            return os.access(path, os.X_OK)
-        except Exception:
-            return False
-
-    @staticmethod
-    def check_full_access(path: Path) -> bool:
-        """проверяет полные права доступа"""
-        try:
-            return os.access(path, os.R_OK | os.W_OK | os.X_OK)
-        except Exception:
-            return False
-
-class WindowsPathHandler:
-    """обработка путей Windows"""
-
-    MAX_PATH_LENGTH = 260
-    EXTENDED_PREFIX = r"\\?\\"
-
-    @staticmethod
-    def normalize_path(path: str | Path) -> str:
-        """нормализует путь для Windows"""
-        # преобразование Path в строку
-        path_str = str(path)
-
-        # замена прямых слешей на обратные
-        normalized = path_str.replace('/', '\\')
-
-        # удаляем множественные слеши
-        normalized = re.sub(r'\\+', r'\\', normalized)
-
-        # удаляем пробелы в конце
-        normalized = normalized.rstrip()
-
-        return normalized
-
-    @staticmethod
-    def get_extended_path(path: str | Path) -> str:
-        """добавляет префикс для длинных путей Windows"""
-        normalized_path = WindowsPathHandler.normalize_path(path)
-
-        # если путь уже содержит префикс - возвращаем как есть
-        if normalized_path.startswith(WindowsPathHandler.EXTENDED_PREFIX):
-            return normalized_path
-
-        # преобразуем в абсолютный путь
-        abs_path = os.path.abspath(normalized_path)
-
-        # добавляем префикс для длинных путей
-        return f"{WindowsPathHandler.EXTENDED_PREFIX}{abs_path}"
-
-    @staticmethod
-    def is_path_too_long(path: str | Path) -> bool:
-        """проверяет, превышает ли путь максимальную длину"""
-        return len(str(path)) > WindowsPathHandler.MAX_PATH_LENGTH
 
 class DirRenamer:
     def __init__(self, cur_directory: str):
         self.mask_shortcut = MASK_FILTER_SHORTCUT
-        self.cur_dir = Path(cur_directory.strip('"'))
-        self.search_dir = Path(SEARCH_DIR)
+        self.cur_dir = WindowsPath(cur_directory.strip('"'))
+        self.search_dir = WindowsPath(SEARCH_DIR)
         self.shell = Dispatch('WScript.Shell')
+        self.path_handler = WindowsPathHandler()
         self.logger = logging.getLogger(__name__)
 
     def validate_directory(self) -> bool:
@@ -292,18 +300,29 @@ class DirRenamer:
 
     def modify_search_dir(self, new_dir: str):
         """изменяет каталог области поиска"""
-        self.search_dir = Path(new_dir.strip('"'))
+        self.search_dir = WindowsPath(new_dir.strip('"'))
 
-    def get_shortcut_target(self, shortcut_path: Path) -> Path | None:
+    def get_shortcut_target(self, shortcut_path: WindowsPath) -> WindowsPath | None:
         """получает целевой путь ярлыка"""
         try:
-            shortcut = self.shell.CreateShortCut(str(shortcut_path))
-            return Path(shortcut.Targetpath)
+            # if self.path_handler.is_path_too_long(shortcut_path):
+            #     print(f"Путь к ярлыку {shortcut_path}\nсоставляет более 260 символов")
+            #     shortcut_path = self.path_handler.get_extended_path(shortcut_path)
+            #     print(f"Исправленный путь {shortcut_path}")
+
+            if len(str(shortcut_path)) > 260:
+                new_shortcut_path = f"\\\\?\\{str(shortcut_path)}"
+                # print("Путь после:", f"\\\\?\\{str(shortcut_path)}")
+            else:
+                new_shortcut_path = str(shortcut_path)
+
+            shortcut = self.shell.CreateShortCut(new_shortcut_path)
+            return WindowsPath(shortcut.Targetpath)
         except Exception as e:
             self.logger.error(f"Ошибка при получении целевого пути ярлыка {str(shortcut_path)}: {e}")
             return None
 
-    def find_shortcuts(self, path_before: Path, path_after: Path) -> list[Path]:
+    def find_shortcuts(self, path_before: WindowsPath, path_after: WindowsPath) -> list[WindowsPath]:
         """поиск ярлыков для целевого каталога в указанной директории"""
 
         shortcuts_found = []
@@ -312,13 +331,14 @@ class DirRenamer:
             search_dir = self.search_dir
             print(f"Выполняется поиск ярлыков в ссылках которых есть путь {str(path_before)} ...")
 
-            for item in sorted(search_dir.rglob(self.mask_shortcut), reverse=True):
+            for item in search_dir.rglob(self.mask_shortcut):
                 link_shortcut = self.get_shortcut_target(item)
-                # if link_shortcut and link_shortcut.is_relative_to(path_before):
-                if link_shortcut:
+                if link_shortcut and link_shortcut.is_relative_to(path_before):
+                # if link_shortcut:
                     print(f"              ярлык -> {item}")
                     print(f"Целевой путь ярлыка -> {self.get_shortcut_target(item)}")
-                    shortcuts_found.append(item)
+                    if not self.get_shortcut_target(item):
+                        shortcuts_found.append(item)
 
             self.logger.info(f"Найдено ярлыков: {len(shortcuts_found)}")
             return shortcuts_found
@@ -326,16 +346,17 @@ class DirRenamer:
             self.logger.error(f"Ошибка при получении списка ярлыков: {e}")
             return []
 
-    def make_new_target(self, old_target: str, target_before: Path, target_after: Path) -> Path | None:
+    def make_new_target(self, old_target: str, target_before: WindowsError, target_after: WindowsPath) -> WindowsPath | None:
         """подготавливает новую ссылку ярлыка"""
         try:
-            old_path = Path(old_target)
+            old_path = WindowsPath(old_target)
             relative = old_path.relative_to(target_before)
             return target_after / relative
         except Exception as e:
             self.logger.error(f"Ошибка при формировании новой ссылки ярлыка: {e}")
             return None
-    def rename_target_shorcut(self, lnk_path: Path, target_before: Path, target_after: Path) -> bool:
+        
+    def rename_target_shorcut(self, lnk_path: WindowsPath, target_before: WindowsPath, target_after: WindowsPath) -> bool:
         """переименовывает целевой путь ярлыка"""
         try:
             shortcut = winshell.shortcut(str(lnk_path))
@@ -534,7 +555,6 @@ def main_menu():
             print(f"Время поиска составило: {seconds_to_time(search_time)}")
 
             if not shortcuts_list:
-                print("Ошибка при поиске ярлыков")
                 input("\nНажмите Enter для продолжения ...")
                 continue
 
