@@ -1,12 +1,13 @@
-from pathlib import WindowsPath
+from pathlib import Path
 
-old_path = WindowsPath("/home/dir-1/dir-2/dir-3/dir-4")
-new_path = WindowsPath("/home/dir-1/dir-2/dir-3/dir-4")
+old_path = Path(r"R:\Departments\САЦ\SAC-DB\РЕГЛ ДОКУМ\174 ПРД ОИ\temp_dir\30.10.25 folder-1\15.10.25 folder-2")
+new_path = Path(r"R:\Departments\САЦ\SAC-DB\РЕГЛ ДОКУМ\174 ПРД ОИ\temp_dir\30.10.25 folder-1\15.10.25 folder-2-new")
 
-def find_diff_path(old_path: WindowsPath, new_path: WindowsPath) -> dict[str, WindowsPath | str] | None:
+def find_diff_path(old_path: Path, new_path: Path) -> dict[str, Path | str] | None:
     """определяет разницу между двумя путями к каталогу"""
-    diff_path: dict[str, WindowsPath] = {}
+    diff_path: dict[str, Path] = {}
     # max_index: int = 0
+    number_changes: int = 0
     info_msg: str = ''
 
     if old_path.is_file() and new_path.is_file():
@@ -16,19 +17,23 @@ def find_diff_path(old_path: WindowsPath, new_path: WindowsPath) -> dict[str, Wi
 
         return diff_path
 
-    # Сравнить части пути
     if old_path.parts != new_path.parts and len(old_path.parts) == len(new_path.parts):
-        # Найти различия
+        # путь изменился, но количество каталогов нет
         index = 0
         index_diff_part = 0
         for old, new in list(zip(old_path.parts, new_path.parts)):
             if old != new:
                 index_diff_part = index
+                number_changes += 1
                 info_msg = f"Изменилось: {old} -> {new}"
             index += 1
 
-        diff_path['path_before'] = WindowsPath(*old_path.parts[:index_diff_part + 1])
-        diff_path['path_after'] = WindowsPath(*new_path.parts[:index_diff_part + 1])
+        if number_changes > 1:
+            print('В пути сделано более одного изменения, это пока не поддерживается')
+            return None
+
+        diff_path['path_before'] = Path(*old_path.parts[:index_diff_part + 1])
+        diff_path['path_after'] = Path(*new_path.parts[:index_diff_part + 1])
 
     elif old_path.parts == new_path.parts:
         info_msg = 'Пути одинаковы'
@@ -36,12 +41,10 @@ def find_diff_path(old_path: WindowsPath, new_path: WindowsPath) -> dict[str, Wi
         diff_path['path_after'] = new_path
 
     elif len(old_path.parts) > len(new_path.parts):
-
-        # Получаем список частей пути
+        # изменилось количество каталогов в пути 
         old_parts = list(old_path.parts)
         new_parts = list(new_path.parts)
 
-        # Находим разницу
         removed = set(old_parts) - set(new_parts)
         info_msg = f"Из пути удален каталог: {removed}"
         # print(list(removed))
@@ -56,17 +59,13 @@ def find_diff_path(old_path: WindowsPath, new_path: WindowsPath) -> dict[str, Wi
                 if old_parts.index(item) < max_index:
                     max_index = old_parts.index(item)
 
-        diff_path['path_before'] = WindowsPath(*old_path.parts[:max_index + 1])
-        diff_path['path_after'] = WindowsPath(*old_path.parts[:max_index])
+        diff_path['path_before'] = Path(*old_path.parts[:max_index + 1])
+        diff_path['path_after'] = Path(*old_path.parts[:max_index])
 
     elif len(old_path.parts) < len(new_path.parts) and old_path.parts == new_path.parts[:(len(old_path.parts) - len(new_path.parts))]:
         info_msg = 'В путь добавлен каталог'
         diff_path['path_before'] = old_path
         diff_path['path_after'] = new_path
-
-    else:
-        print('В пути сделано более одного изменения, это пока не поддерживается')
-        return None
 
     diff_path['info_msg'] = info_msg
 

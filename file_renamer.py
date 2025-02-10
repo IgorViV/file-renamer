@@ -5,7 +5,7 @@ import logging
 import winshell
 import re
 import threading
-from pathlib import Path, WindowsPath
+from pathlib import Path
 from datetime import datetime, timedelta
 from win32com.client import Dispatch
 from typing import List, Tuple, Dict
@@ -262,8 +262,8 @@ class FileRenamer:
 class DirRenamer:
     def __init__(self, cur_directory: str):
         self.mask_shortcut = MASK_FILTER_SHORTCUT
-        self.cur_dir = WindowsPath(cur_directory.strip('"'))
-        self.search_dir = WindowsPath(SEARCH_DIR)
+        self.cur_dir = Path(cur_directory.strip('"'))
+        self.search_dir = Path(SEARCH_DIR)
         self.shell = Dispatch('WScript.Shell')
         self.path_handler = WindowsPathHandler()
         self.logger = logging.getLogger(__name__)
@@ -300,44 +300,57 @@ class DirRenamer:
 
     def modify_search_dir(self, new_dir: str):
         """изменяет каталог области поиска"""
-        self.search_dir = WindowsPath(new_dir.strip('"'))
+        self.search_dir = Path(new_dir.strip('"'))
 
-    def get_shortcut_target(self, shortcut_path: WindowsPath) -> WindowsPath | None:
+    def get_path_diff(self, current_path: Path, new_path: Path) -> Path:
+        """получает разницу путей"""
+        diff_path = Path()
+        
+        return diff_path
+
+    def change_path(self):
+        """изменяет путь"""
+        pass
+
+    def get_shortcut_target(self, shortcut_path: Path) -> Path | None:
         """получает целевой путь ярлыка"""
         try:
             # if self.path_handler.is_path_too_long(shortcut_path):
-            #     print(f"Путь к ярлыку {shortcut_path}\nсоставляет более 260 символов")
-            #     shortcut_path = self.path_handler.get_extended_path(shortcut_path)
-            #     print(f"Исправленный путь {shortcut_path}")
+                # print(f"Путь к ярлыку {shortcut_path}\nсоставляет более 260 символов")
+                # shortcut_path = self.path_handler.get_extended_path(shortcut_path)
+                # print(f"Исправленный путь {shortcut_path}")
 
-            if len(str(shortcut_path)) > 260:
-                new_shortcut_path = f"\\\\?\\{str(shortcut_path)}"
-                # print("Путь после:", f"\\\\?\\{str(shortcut_path)}")
-            else:
-                new_shortcut_path = str(shortcut_path)
-
-            shortcut = self.shell.CreateShortCut(new_shortcut_path)
-            return WindowsPath(shortcut.Targetpath)
+            shortcut = self.shell.CreateShortCut(str(shortcut_path))
+            target_path = Path(shortcut.Targetpath)
+            return target_path
+        except PermissionError as e:
+            self.logger.error(f"Нет доступа к ярлыку {str(shortcut_path)}: {e}")
+            return None
+        except AttributeError as e:
+            self.logger.error(f"Не удалось получить доступ к целевому пути ярлыка {str(shortcut_path)}: {e}")
+            return None
+        except FileNotFoundError as e:
+            self.logger.error(f"Целевой файл {str(target_path)} ярлыка {str(shortcut_path)} не найден: {e}")
+            return None
         except Exception as e:
             self.logger.error(f"Ошибка при получении целевого пути ярлыка {str(shortcut_path)}: {e}")
             return None
 
-    def find_shortcuts(self, path_before: WindowsPath, path_after: WindowsPath) -> list[WindowsPath]:
+    def find_shortcuts(self, shortcut_path: Path) -> list[Path]:
         """поиск ярлыков для целевого каталога в указанной директории"""
 
         shortcuts_found = []
 
         try:
             search_dir = self.search_dir
-            print(f"Выполняется поиск ярлыков в ссылках которых есть путь {str(path_before)} ...")
+            print(f"Выполняется поиск ярлыков в ссылках которых есть путь {str(shortcut_path)} ...")
 
             for item in search_dir.rglob(self.mask_shortcut):
                 link_shortcut = self.get_shortcut_target(item)
-                if link_shortcut and link_shortcut.is_relative_to(path_before):
-                # if link_shortcut:
+                if link_shortcut and link_shortcut.is_relative_to(shortcut_path):
                     print(f"              ярлык -> {item}")
                     print(f"Целевой путь ярлыка -> {self.get_shortcut_target(item)}")
-                    if not self.get_shortcut_target(item):
+                    if self.get_shortcut_target(item):
                         shortcuts_found.append(item)
 
             self.logger.info(f"Найдено ярлыков: {len(shortcuts_found)}")
@@ -346,38 +359,50 @@ class DirRenamer:
             self.logger.error(f"Ошибка при получении списка ярлыков: {e}")
             return []
 
-    def make_new_target(self, old_target: str, target_before: WindowsError, target_after: WindowsPath) -> WindowsPath | None:
+    def create_new_target(self, old_target: str, target_before: Path, target_after: Path) -> Path | None:
         """подготавливает новую ссылку ярлыка"""
         try:
-            old_path = WindowsPath(old_target)
+            old_path = Path(old_target)
             relative = old_path.relative_to(target_before)
-            return target_after / relative
+            new_target = target_after / relative
+            print("Новая ссылка ярлыка:", new_target)
+            return new_target
         except Exception as e:
             self.logger.error(f"Ошибка при формировании новой ссылки ярлыка: {e}")
             return None
         
-    def rename_target_shorcut(self, lnk_path: WindowsPath, target_before: WindowsPath, target_after: WindowsPath) -> bool:
+    def rename_target_shorcut(self, lnk_path: Path, target_before: Path, target_after: Path) -> bool:
         """переименовывает целевой путь ярлыка"""
         try:
             shortcut = winshell.shortcut(str(lnk_path))
             old_target = shortcut.path
-            os.remove(str(lnk_path))
-            # lnk_path.unlink(missing_ok=True)
 
-            new_target = self.make_new_target(old_target, target_before, target_after)
+             # временный ярлык
+            temp_lnk = lnk_path.with_name(f"temp_{lnk_path.name}")
+            
+            new_target = self.create_new_target(old_target, target_before, target_after)
+            if not new_target:
+                return False
 
             if not new_target.exists():
                 raise FileNotFoundError(f"Путь назначения не существует: {str(new_target)}")
 
-            # cоздаем ярлык для файла
+            # новый путь во временном ярлыке
             shell = Dispatch('WScript.Shell')
-            shortcut = shell.CreateShortCut(str(lnk_path))
-            shortcut.Targetpath = str(new_target)
-            shortcut.save()
+            new_shortcut = shell.CreateShortCut(str(temp_lnk))
+            new_shortcut.Targetpath = str(new_target)
+            new_shortcut.save()
+
+            os.remove(str(lnk_path))
+            os.rename(str(temp_lnk), str(lnk_path))
 
             return True
         except Exception as e:
-            # TODO предусматреть восстановление ярлыка
+            if temp_lnk and temp_lnk.exists():
+                try:
+                    temp_lnk.unlink()
+                except:
+                    pass
 
             self.logger.error(f"Ошибка переименования целевого пути ярлыка {str(lnk_path)}: {e}")
             return False
@@ -408,17 +433,17 @@ def main_menu():
     shortcuts_list = []
     is_done = False
 
-    def animate():
-        """анимация процесса выполнения"""
-        chars = "/-\\|"
-        while True:
-            if is_done:
-                break
-            for char in chars:
-                sys.stdout.write('\r' + 'Выполняется поиск ...' + char)
-                sys.stdout.flush()
-                time.sleep(0.1)
-        sys.stdout.write('\r' + 'Поиск завершен: ' + '\n')
+    # def animate():
+    #     """анимация процесса выполнения"""
+    #     chars = "/-\\|"
+    #     while True:
+    #         if is_done:
+    #             break
+    #         for char in chars:
+    #             sys.stdout.write('\r' + 'Выполняется поиск ...' + char)
+    #             sys.stdout.flush()
+    #             time.sleep(0.1)
+    #     sys.stdout.write('\r' + 'Поиск завершен: ' + '\n')
 
     def seconds_to_time(seconds: float) -> str:
         """изменяет формат времени"""
@@ -523,17 +548,27 @@ def main_menu():
                 print(Style.RESET_ALL)
 
                 print(f"Выполните требуемые изменения каталога {dir_renamer.get_current_path_dir()}, и ...\n")
-                ask_new_path_dir = input("Введите новый путь к каталогу: ")
+                ask_new_path_dir = input("Введите новый путь к каталогу (для выхода нажмите Enter ...): ")
                 new_path_dir = Path(ask_new_path_dir.strip('"'))
+                if new_path_dir == Path():
+                    break
                 if not new_path_dir.exists() and new_path_dir != dir_renamer.get_current_path_dir():
-                    logger.error(f"Указанный вами новый каталог {new_path_dir} не существует, вы не сделали изменения")
+                    logger.error(f"Указанный вами новый каталог {new_path_dir} не существует, возможно вы не сделали изменения")
+                    input("\nНажмите Enter для продолжения ...")
+                    continue
+                elif new_path_dir == dir_renamer.get_current_path_dir():
+                    logger.info(f"Указанный вами новый каталог {new_path_dir} без изменений")
                     input("\nНажмите Enter для продолжения ...")
                     continue
                 else:
                     break
 
-            if new_path_dir == dir_renamer.get_current_path_dir():
-                logger.info(f"Указанный вами новый каталог {new_path_dir} без изменений")
+            # if new_path_dir == dir_renamer.get_current_path_dir():
+            #     logger.info(f"Указанный вами новый каталог {new_path_dir} без изменений")
+            #     input("\nНажмите Enter для продолжения ...")
+            #     continue
+
+            if new_path_dir == Path():
                 input("\nНажмите Enter для продолжения ...")
                 continue
 
@@ -542,14 +577,16 @@ def main_menu():
             # определить разницу между путями: какой элемент отличается или отсутствует
             diff_path = change_dir.find_diff_path(dir_renamer.get_current_path_dir(), new_path_dir)
 
-            if not diff_path:
+            if diff_path is None:
                 print('Ошибка при сравнении путей каталогов!')
                 input("\nНажмите Enter для продолжения ...")
                 continue
 
+            print(diff_path['info_msg'])
+
             start_time = time.perf_counter()
 
-            shortcuts_list = dir_renamer.find_shortcuts(diff_path['path_before'], diff_path['path_after'])
+            shortcuts_list = dir_renamer.find_shortcuts(diff_path['path_before'])
 
             search_time = time.perf_counter() - start_time
             print(f"Время поиска составило: {seconds_to_time(search_time)}")
@@ -559,9 +596,9 @@ def main_menu():
                 continue
 
             #  TODO закомментировано для тестирования
-            # ask_renamed = input('Хотите переименовать ярлыки - введите 1, продолжить без изменения - Enter: ')
-            # if ask_renamed == '1':
-            #     dir_renamer.modify_shorcuts(shortcuts_list, diff_path['path_before'], diff_path['path_after'])
+            ask_renamed = input('\nХотите переименовать ярлыки - введите 1, продолжить без изменения - Enter: ')
+            if ask_renamed == '1':
+                dir_renamer.modify_shorcuts(shortcuts_list, diff_path['path_before'], diff_path['path_after'])
 
             input("\nНажмите Enter для продолжения ...")
 
