@@ -595,8 +595,7 @@ def main_menu():
                 input("\nНажмите Enter для продолжения ...")
                 continue
 
-            #  TODO закомментировано для тестирования
-            ask_renamed = input('\nХотите переименовать ярлыки - введите 1, продолжить без изменения - Enter: ')
+            ask_renamed = input('\nХотите переименовать ссылки в ярлыках - введите 1, продолжить без изменения - Enter: ')
             if ask_renamed == '1':
                 dir_renamer.modify_shorcuts(shortcuts_list, diff_path['path_before'], diff_path['path_after'])
 
