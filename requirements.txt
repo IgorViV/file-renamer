@@ -1,2 +1,0 @@
-colorama==0.4.6
-pywin32==308; sys_platform == "win32"
