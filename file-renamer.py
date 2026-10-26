@@ -12,6 +12,8 @@ from colorama import init, Fore, Style
 
 MASK_FILTER_FILE = '[0-3][0-9].[0-1][0-9].[0-9][0-9] *'
 MASK_FILTER_SHORTCUT = '*.lnk'
+DATE_PREFIX_PATTERN = re.compile(r'^(?P<date>\d{2}\.\d{2}\.\d{2})')
+PATH_SEPARATOR_PATTERN = re.compile(r'([\\/]+)')
 
 
 class WindowsShortcutBackend:
@@ -66,58 +68,110 @@ def setup_logging():
 
 class FileRenamer:
     def __init__(self, directory: str, shortcut_backend=None):
-        self.directory = directory.strip('"')
+        self.directory = str(directory).strip().strip('"').strip()
         self.mask = MASK_FILTER_FILE
         self.mask_shortcut = MASK_FILTER_SHORTCUT
         self.logger = logging.getLogger(__name__)
         self._shortcut_backend = shortcut_backend
 
     def validate_directory(self) -> bool:
-        """проверяет существование каталога"""
+        """проверяет, что путь задан и является существующим каталогом"""
+        if not self.directory:
+            self.logger.error("Каталог не указан")
+            return False
         if not os.path.exists(self.directory):
             self.logger.error(f"Указанный вами каталог {self.directory} не существует")
             return False
+        if not os.path.isdir(self.directory):
+            self.logger.error(f"Указанный путь не является каталогом: {self.directory}")
+            return False
         return True
 
-    def get_files_list(self) -> List[pathlib.Path]:
-        """получает список файлов в каталоге"""
-        list_files = []
+    def _collect_matching(self) -> Tuple[List[pathlib.Path], List[pathlib.Path]]:
+        """собирает файлы и каталоги, подходящие под маску"""
+        files = []
+        directories = []
         try:
             select_dir = pathlib.Path(self.directory)
-            for item in sorted(select_dir.rglob(self.mask), reverse=True):
-                print(f"{'[папка]' if item.is_dir() else '->'} {item}")
-                list_files.append(item)
-            self.logger.info(f"Найдено файлов: {len(list_files)}")
-            return list_files
+            for item in select_dir.rglob(self.mask):
+                if item.is_dir():
+                    directories.append(item)
+                elif item.is_file():
+                    files.append(item)
         except Exception as e:
-            self.logger.error(f"Ошибка при получении списка файлов: {e}")
-            return []
+            self.logger.error(f"Ошибка при получении списка объектов: {e}")
+            return [], []
+        return files, directories
+
+    @staticmethod
+    def _rename_order(item: pathlib.Path):
+        """сначала более глубокие объекты, затем по пути"""
+        return (-len(item.parts), str(item))
+
+    def get_files_list(self) -> List[pathlib.Path]:
+        """получает список файлов (без каталогов) в каталоге"""
+        files, _ = self._collect_matching()
+        files.sort(key=self._rename_order)
+        self.logger.info(f"Найдено файлов: {len(files)}")
+        return files
+
+    def get_directories_list(self) -> List[pathlib.Path]:
+        """получает список каталогов в каталоге"""
+        _, directories = self._collect_matching()
+        directories.sort(key=self._rename_order)
+        self.logger.info(f"Найдено каталогов: {len(directories)}")
+        return directories
+
+    def get_rename_candidates(
+        self, include_directories: bool = True
+    ) -> List[pathlib.Path]:
+        """возвращает файлы и, при необходимости, каталоги в порядке переименования"""
+        files, directories = self._collect_matching()
+        candidates = (files + directories) if include_directories else files
+        candidates.sort(key=self._rename_order)
+        self.logger.info(
+            f"Найдено объектов для переименования: {len(candidates)} "
+            f"(файлов {len(files)}, каталогов "
+            f"{len(directories) if include_directories else 0})"
+        )
+        return candidates
 
     def get_shortcut_list(self) -> List[pathlib.Path]:
         """получает список ярлыков в каталоге"""
         list_shortcut = []
         try:
             select_dir = pathlib.Path(self.directory)
-            for item in sorted(select_dir.rglob(self.mask_shortcut), reverse=True):
-                print(f"ярлык -> {item}")
-                list_shortcut.append(item)
-            self.logger.info(f"Найдено ярлыков: {len(list_shortcut)}")
-            return list_shortcut
+            for item in select_dir.rglob(self.mask_shortcut):
+                if item.is_file():
+                    list_shortcut.append(item)
         except Exception as e:
             self.logger.error(f"Ошибка при получении списка ярлыков: {e}")
             return []
+        list_shortcut.sort(key=self._rename_order)
+        self.logger.info(f"Найдено ярлыков: {len(list_shortcut)}")
+        return list_shortcut
+
+    def _format_date(self, raw_date: str) -> str:
+        """переводит ДД.ММ.ГГ в ГГГГ.ММ.ДД, проверяя календарь.
+
+        Двузначный год: 69-99 -> 1969-1999, 00-68 -> 2000-2068.
+        """
+        return datetime.strptime(raw_date, '%d.%m.%y').strftime('%Y.%m.%d')
 
     def _target_path(self, file: pathlib.Path) -> pathlib.Path:
         """возвращает путь с датой в формате ГГГГ.ММ.ДД"""
         old_name = file.name
+        match = DATE_PREFIX_PATTERN.match(old_name)
+        if not match:
+            raise ValueError(f"в имени '{old_name}' нет даты ДД.ММ.ГГ")
+        raw_date = match.group('date')
         try:
-            dateobj = datetime.strptime(old_name[:8], '%d.%m.%y').date()
+            new_date = self._format_date(raw_date)
         except ValueError as e:
             raise ValueError(
-                f"в имени '{old_name}' нет корректной даты ДД.ММ.ГГ"
+                f"некорректная дата '{raw_date}' в имени '{old_name}'"
             ) from e
-        date_string = dateobj.strftime('%Y.%m.%d')
-        return file.with_name(f"{date_string}{old_name[8:]}")
+        return file.with_name(f"{new_date}{old_name[len(raw_date):]}")
 
     def _apply_rename(self, source: pathlib.Path, target: pathlib.Path) -> bool:
         """переименовывает объект, не перезаписывая существующую цель"""
@@ -132,6 +186,11 @@ class FileRenamer:
         except Exception as e:
             self.logger.error(f"Ошибка переименования файла {source}: {e}")
             return False
+        if not target.exists() or source.exists():
+            self.logger.error(
+                f"Не удалось подтвердить переименование {source} -> {target}"
+            )
+            return False
         self.logger.info(f"{source} -> {target}")
         return True
 
@@ -145,12 +204,14 @@ class FileRenamer:
         return self._apply_rename(file, new_path)
 
     def build_rename_plan(
-        self
+        self, include_directories: bool = True
     ) -> Tuple[List[Tuple[pathlib.Path, pathlib.Path]], List[Tuple[pathlib.Path, str]]]:
         """строит план переименования и список проблемных объектов"""
         plan = []
         errors = []
-        for file in self.get_files_list():
+        for file in self.get_rename_candidates(
+            include_directories=include_directories
+        ):
             try:
                 new_path = self._target_path(file)
             except ValueError as e:
@@ -172,10 +233,13 @@ class FileRenamer:
         dry_run: bool = False,
         confirm: Optional[
             Callable[[List[Tuple[pathlib.Path, pathlib.Path]]], bool]
-        ] = None
+        ] = None,
+        include_directories: bool = True
     ) -> Tuple[int, int]:
-        """переименовывает файлы; dry_run только показывает план"""
-        plan, errors = self.build_rename_plan()
+        """переименовывает файлы и каталоги; dry_run только показывает план"""
+        plan, errors = self.build_rename_plan(
+            include_directories=include_directories
+        )
         failed_count = len(errors)
 
         if plan:
@@ -209,23 +273,22 @@ class FileRenamer:
         return success_count, failed_count
 
     def update_folder_dates(self, path: str) -> str:
-        """заменяет старую дату на новую"""
+        """заменяет дату ДД.ММ.ГГ на ГГГГ.ММ.ДД во всех компонентах пути.
 
-        file_name_parts = path.split('\\')
-        new_path = ''
-
-        pattern = re.compile(r'^\d{2}\.\d{2}\.\d{2}')
-
-        for name_part in file_name_parts:
-            if pattern.match(name_part):
-                dateobj = datetime.strptime(name_part[:8], '%d.%m.%y').date()
-                date_string = dateobj.strftime('%Y.%m.%d')
-                new_name_part = name_part.replace(name_part[:8], date_string)
-                new_path = new_path + new_name_part + '\\'
-            else:
-                new_path = new_path + name_part + '\\'
-
-        return os.path.dirname(new_path)
+        Разделители (``\\`` и ``/``) сохраняются, поэтому функция одинаково
+        работает с локальными, сетевыми (UNC) и смешанными путями Windows.
+        """
+        converted = []
+        for part in PATH_SEPARATOR_PATTERN.split(path):
+            match = DATE_PREFIX_PATTERN.match(part)
+            if not match:
+                converted.append(part)
+                continue
+            raw_date = match.group('date')
+            converted.append(
+                f"{self._format_date(raw_date)}{part[len(raw_date):]}"
+            )
+        return ''.join(converted)
 
     def _get_shortcut_backend(self):
         """возвращает бэкенд ярлыков, создавая Windows-бэкенд при необходимости"""
@@ -273,6 +336,10 @@ class FileRenamer:
             self.logger.info("Ярлыки не найдены")
             return 0, 0
 
+        print("\nНайденные ярлыки:")
+        for lnk in list_shortcuts:
+            print(f"ярлык -> {lnk}")
+
         if confirm is not None and not confirm(list_shortcuts):
             self.logger.info("Обновление ярлыков отменено пользователем")
             return 0, 0
@@ -297,6 +364,7 @@ class FileRenamerTests(unittest.TestCase):
         """создает тестовые каталоги и файлы"""
         self.test_dir = 'test_directory'
         self.test_files = []
+        self.test_dirs = []
 
         if not os.path.exists(self.test_dir):
             os.makedirs(self.test_dir)
@@ -349,10 +417,8 @@ class FileRenamerTests(unittest.TestCase):
         create_mock_directories(self.test_dir)
 
         for dir_path, dir_names, file_names in os.walk(self.test_dir):
-            for cur_dir in dir_names:
-                self.test_files.append(cur_dir)
-            for file in file_names:
-                self.test_files.append(file)
+            self.test_dirs.extend(dir_names)
+            self.test_files.extend(file_names)
 
         self.renamer = FileRenamer(self.test_dir)
 
@@ -380,59 +446,92 @@ class FileRenamerTests(unittest.TestCase):
         self.assertFalse(invalid_renamer.validate_directory())
 
     def test_get_files_list(self):
-        """тест получения списка файлов"""
+        """тест получения списков файлов и каталогов"""
         files = self.renamer.get_files_list()
-        print(files)
+        directories = self.renamer.get_directories_list()
         self.assertEqual(len(files), len(self.test_files))
-        # for file in self.test_files:  TODO понять, что с WindowsPath
-        #     self.assertIn(file, files)
+        self.assertEqual(len(directories), len(self.test_dirs))
 
     def test_rename_files(self):
-        """тест переименования файлов"""
+        """тест переименования файлов и каталогов"""
         success_count, failed_count = self.renamer.rename_files()
-        self.assertEqual(success_count, len(self.test_files))
+        self.assertEqual(
+            success_count, len(self.test_files) + len(self.test_dirs)
+        )
         self.assertEqual(failed_count, 0)
+
+def prompt_input(prompt: str) -> Optional[str]:
+    """читает строку, переживая EOF и Ctrl+C"""
+    try:
+        return input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nВвод прерван.")
+        return None
+
+
+def pause() -> None:
+    """ждет Enter, не падая при EOF/Ctrl+C"""
+    try:
+        input("\nНажмите Enter для продолжения ...")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
 
 def ask_confirmation(prompt: str) -> bool:
     """запрашивает подтверждение операции (y/N)"""
-    return input(prompt).strip().lower() in ('y', 'yes', 'д', 'да')
+    answer = prompt_input(prompt)
+    return answer is not None and answer.lower() in ('y', 'yes', 'д', 'да')
 
 
 def main_menu():
     """главное меню консольного приложения"""
     init()
     setup_logging()
-    logger = logging.getLogger(__name__)
 
     while True:
         clear_screen()
         print(f"{Fore.YELLOW}=== Утилита для переименования файлов ===")
-        print("1. Переименование файлов")
+        print("1. Переименование файлов и папок")
         print("2. Переименование ссылок в ярлыках")
         print("3. Справка")
         print("4. Выход")
         print(Style.RESET_ALL)
 
-        choice = input("\nВыберите действие (1-4): ")
+        choice = prompt_input("\nВыберите действие (1-4): ")
         print(Style.RESET_ALL)
+
+        if choice is None:
+            print(f"{Fore.YELLOW}Пока!")
+            print(Style.RESET_ALL)
+            break
 
         if choice == '1':
             clear_screen()
-            print(f"{Fore.GREEN}Переименование файлов")
+            print(f"{Fore.GREEN}Переименование файлов и папок")
             print(Style.RESET_ALL)
-            ask_path_dir = input("Введите путь к каталогу: ")
+            ask_path_dir = prompt_input("Введите путь к каталогу: ")
+
+            if not ask_path_dir:
+                print("Путь не указан.")
+                pause()
+                continue
 
             renamer = FileRenamer(ask_path_dir)
 
             if not renamer.validate_directory():
+                pause()
                 continue
 
-            if ask_path_dir.strip('"') == '.':
-                print(f"В текущем каталоге выполняем поиск файлов с префиксом датой в формате ДД.ММ.ГГ) ...")
+            if renamer.directory == '.':
+                print("В текущем каталоге выполняем поиск файлов и папок "
+                      "с префиксом-датой в формате ДД.ММ.ГГ ...")
             else:
-                print(f"В каталоге {ask_path_dir} выполняем поиск файлов с префиксом датой в формате ДД.ММ.ГГ) ...")
+                print(f"В каталоге {renamer.directory} выполняем поиск "
+                      "файлов и папок с префиксом-датой в формате ДД.ММ.ГГ ...")
 
-            dry_run = ask_confirmation("Только показать план без изменений (dry-run)? [y/N]: ")
+            dry_run = ask_confirmation(
+                "Только показать план без изменений (dry-run)? [y/N]: "
+            )
 
             renamer.rename_files(
                 dry_run=dry_run,
@@ -441,23 +540,29 @@ def main_menu():
                 )
             )
 
-            input("\nНажмите Enter для продолжения ...")
+            pause()
 
         elif choice == '2':
             clear_screen()
             print(f"{Fore.GREEN}Переименование ссылок в ярлыках")
             print(Style.RESET_ALL)
-            ask_dir_lnk = input('Введите путь к каталогу: ')
+            ask_dir_lnk = prompt_input('Введите путь к каталогу: ')
+
+            if not ask_dir_lnk:
+                print("Путь не указан.")
+                pause()
+                continue
 
             renamer_lnk = FileRenamer(ask_dir_lnk)
 
             if not renamer_lnk.validate_directory():
+                pause()
                 continue
 
-            if ask_dir_lnk.strip('"') == '.':
+            if renamer_lnk.directory == '.':
                 print(f"В текущем каталоге выполняем поиск ярлыков ...")
             else:
-                print(f"В каталоге {ask_dir_lnk} выполняем поиск ярлыков ...")
+                print(f"В каталоге {renamer_lnk.directory} выполняем поиск ярлыков ...")
 
             renamer_lnk.modify_shorcuts(
                 confirm=lambda shortcuts: ask_confirmation(
@@ -465,7 +570,7 @@ def main_menu():
                 )
             )
 
-            input("\nНажмите Enter для продолжения ...")
+            pause()
 
         elif choice == '3':
             clear_screen()
@@ -477,17 +582,19 @@ def main_menu():
             print("=====================================")
             print(Style.RESET_ALL)
             print("Это утилита для изменения формата записи даты в")
-            print("префиксе наименования файлов и ссылок в ярлыках:")
+            print("префиксе наименования файлов, папок и ссылок в ярлыках:")
             print("- формат записи даты ДД.ММ.ГГ в имени каталога")
             print("(файла, ссылки) будет изменен на ГГГГ.ММ.ДД.")
-            print("\nПорядок использования:")
-            print("- сначала переименовываем файлы;")
-            print("- затем переименовываем ссылки в ярлыках.")
-            print("- перед изменениями показывается план")
+            print("- двузначный год: 69-99 -> 1969-1999, 00-68 -> 2000-2068.")
+            print("- файлы и папки переименовываются от самых глубоких;")
+            print("  перед изменениями показывается план")
             print("  и запрашивается подтверждение.")
+            print("\nПорядок использования:")
+            print("- сначала переименовываем файлы и папки;")
+            print("- затем переименовываем ссылки в ярлыках.")
             print("* может возникнуть ошибка, если файл на который ярлык будет ссылаться еще не переименован.")
 
-            input("\nНажмите Enter для продолжения ...")
+            pause()
 
         elif choice == '4':
             clear_screen()
@@ -498,7 +605,7 @@ def main_menu():
 
         else:
             print("неверный выбор!")
-            input("\nНажмите Enter для продолжения ...")
+            pause()
 
 if __name__ == "__main__":
     main_menu()
