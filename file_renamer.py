@@ -299,7 +299,7 @@ class FileRenamer:
             self._shortcut_backend = WindowsShortcutBackend()
         return self._shortcut_backend
 
-    def rename_target_shorcut(self, lnk_path: pathlib.Path) -> bool:
+    def rename_shortcut_target(self, lnk_path: pathlib.Path) -> bool:
         """переименовывает целевой путь ярлыка, не удаляя сам ярлык"""
         try:
             backend = self._get_shortcut_backend()
@@ -324,7 +324,7 @@ class FileRenamer:
             self.logger.error(f"Ошибка переименования целевого пути ярлыка {lnk_path}: {e}")
             return False
 
-    def modify_shorcuts(
+    def modify_shortcuts(
         self,
         confirm: Optional[Callable[[List[pathlib.Path]], bool]] = None
     ) -> Tuple[int, int]:
@@ -348,7 +348,7 @@ class FileRenamer:
         for lnk in list_shortcuts:
 
             try:
-                if self.rename_target_shorcut(lnk):
+                if self.rename_shortcut_target(lnk):
                     success_count += 1
                 else:
                     failed_count += 1
@@ -359,6 +359,10 @@ class FileRenamer:
 
         self.logger.info(f"Успешно модифицировано ярлыков: {success_count}, ошибок {failed_count}")
         return success_count, failed_count
+
+    # устаревшие имена оставлены для обратной совместимости
+    rename_target_shorcut = rename_shortcut_target
+    modify_shorcuts = modify_shortcuts
 
 
 def prompt_input(prompt: str) -> Optional[str]:
@@ -465,7 +469,7 @@ def main_menu():
             else:
                 print(f"В каталоге {renamer_lnk.directory} выполняем поиск ярлыков ...")
 
-            renamer_lnk.modify_shorcuts(
+            renamer_lnk.modify_shortcuts(
                 confirm=lambda shortcuts: ask_confirmation(
                     f"\nОбновить {len(shortcuts)} ярлык(ов)? [y/N]: "
                 )

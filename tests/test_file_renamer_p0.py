@@ -253,7 +253,7 @@ class ShortcutTests(TemporaryProjectTest):
         with self._patch_target(self.NEW_TARGET), \
                 mock.patch.object(module.os.path, "exists", return_value=True), \
                 mock.patch.object(module.os, "remove") as remove:
-            self.assertTrue(self.renamer.rename_target_shorcut(self.lnk))
+            self.assertTrue(self.renamer.rename_shortcut_target(self.lnk))
 
         remove.assert_not_called()
         self.assertTrue(self.lnk.exists())
@@ -269,7 +269,7 @@ class ShortcutTests(TemporaryProjectTest):
         with self._patch_target(self.NEW_TARGET), \
                 mock.patch.object(module.os.path, "exists", return_value=False), \
                 mock.patch.object(module.os, "remove") as remove:
-            self.assertFalse(self.renamer.rename_target_shorcut(self.lnk))
+            self.assertFalse(self.renamer.rename_shortcut_target(self.lnk))
 
         remove.assert_not_called()
         self.assertTrue(self.lnk.exists())
@@ -284,7 +284,7 @@ class ShortcutTests(TemporaryProjectTest):
         with self._patch_target(self.NEW_TARGET), \
                 mock.patch.object(module.os.path, "exists", side_effect=exists), \
                 mock.patch.object(module.os, "remove") as remove:
-            self.assertFalse(self.renamer.rename_target_shorcut(self.lnk))
+            self.assertFalse(self.renamer.rename_shortcut_target(self.lnk))
 
         remove.assert_not_called()
         self.assertEqual(self.backend.updates, [])
@@ -294,7 +294,7 @@ class ShortcutTests(TemporaryProjectTest):
         with mock.patch.object(
                 FileRenamer, "update_folder_dates", side_effect=ValueError("bad date")
         ), mock.patch.object(module.os, "remove") as remove:
-            self.assertFalse(self.renamer.rename_target_shorcut(self.lnk))
+            self.assertFalse(self.renamer.rename_shortcut_target(self.lnk))
 
         remove.assert_not_called()
         self.assertTrue(self.lnk.exists())
@@ -305,7 +305,7 @@ class ShortcutTests(TemporaryProjectTest):
         with self._patch_target(self.NEW_TARGET), \
                 mock.patch.object(module.os.path, "exists", return_value=True), \
                 mock.patch.object(module.os, "remove") as remove:
-            self.assertFalse(self.renamer.rename_target_shorcut(self.lnk))
+            self.assertFalse(self.renamer.rename_shortcut_target(self.lnk))
 
         remove.assert_not_called()
         self.assertTrue(self.lnk.exists())
@@ -316,7 +316,7 @@ class ShortcutTests(TemporaryProjectTest):
         with self._patch_target(self.OLD_TARGET), \
                 mock.patch.object(module.os.path, "exists", return_value=True), \
                 mock.patch.object(module.os, "remove") as remove:
-            self.assertTrue(self.renamer.rename_target_shorcut(self.lnk))
+            self.assertTrue(self.renamer.rename_shortcut_target(self.lnk))
 
         remove.assert_not_called()
         self.assertEqual(self.backend.updates, [])
@@ -335,10 +335,17 @@ class ShortcutTests(TemporaryProjectTest):
 
         with self._patch_target(self.NEW_TARGET), \
                 mock.patch.object(module.os.path, "exists", return_value=True):
-            success, failed = self.renamer.modify_shorcuts()
+            success, failed = self.renamer.modify_shortcuts()
 
         self.assertEqual((success, failed), (1, 1))
         self.assertEqual(len(self.backend.updates), 1)
+
+    def test_legacy_method_names_are_aliases(self):
+        self.assertIs(
+            FileRenamer.rename_target_shorcut,
+            FileRenamer.rename_shortcut_target,
+        )
+        self.assertIs(FileRenamer.modify_shorcuts, FileRenamer.modify_shortcuts)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ name = "file-renamer"
 dynamic = ["version"]
 description = "CLI для массового переименования дат в именах файлов, папок и ярлыков"
 readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Igor Vlashchenko" }]
 requires-python = ">=3.9"
 dependencies = [
     "colorama>=0.4.6",

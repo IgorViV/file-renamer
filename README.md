@@ -56,3 +56,7 @@ python -m unittest discover -s tests -t . -v
 
 Тесты не требуют Windows и `pywin32`: COM-вызовы подменяются, а импорты
 Windows-зависимостей выполняются лениво.
+
+## Лицензия
+
+MIT, см. [LICENSE](LICENSE).

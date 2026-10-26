@@ -233,7 +233,7 @@ class ShortcutTargetIntegrationTests(TemporaryProjectTest):
         renamer = FileRenamer(str(self.dir), shortcut_backend=backend)
 
         with mock.patch.object(module.os.path, "exists", return_value=True):
-            self.assertTrue(renamer.rename_target_shorcut(lnk))
+            self.assertTrue(renamer.rename_shortcut_target(lnk))
 
         self.assertEqual(
             backend.target,
@@ -279,7 +279,7 @@ class ShortcutConfirmationTests(TemporaryProjectTest):
         renamer = FileRenamer(str(self.dir), shortcut_backend=backend)
         renamer.get_shortcut_list = lambda: [lnk]
 
-        success, failed = renamer.modify_shorcuts(confirm=lambda shortcuts: False)
+        success, failed = renamer.modify_shortcuts(confirm=lambda shortcuts: False)
 
         self.assertEqual((success, failed), (0, 0))
         self.assertEqual(backend.updates, [])
