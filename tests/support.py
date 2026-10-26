@@ -1,9 +1,9 @@
 """Загрузка основного модуля в тестах.
 
-Файл называется ``file-renamer.py`` (дефис в имени), поэтому его нельзя
-импортировать обычным ``import``. Кроме того, на не-Windows машинах нет
-``winshell``, ``win32com`` и ``colorama`` — для тестов подставляются заглушки,
-чтобы проверять логику, не зависящую от Windows.
+Модуль ``file_renamer.py`` загружается по пути, чтобы тесты не зависели от
+текущей рабочей директории. На не-Windows машинах нет ``win32com`` и
+``colorama`` — для тестов подставляются заглушки, чтобы проверять логику,
+не зависящую от Windows.
 """
 
 import importlib.util
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODULE_PATH = PROJECT_ROOT / "file-renamer.py"
+MODULE_PATH = PROJECT_ROOT / "file_renamer.py"
 MODULE_NAME = "file_renamer_under_test"
 
 
@@ -32,11 +32,6 @@ def _stub_colorama() -> None:
 
 def _stub_windows_modules() -> None:
     try:
-        import winshell  # noqa: F401
-    except ImportError:
-        sys.modules["winshell"] = types.ModuleType("winshell")
-
-    try:
         from win32com.client import Dispatch  # noqa: F401
     except ImportError:
         win32com = types.ModuleType("win32com")
@@ -49,7 +44,7 @@ def _stub_windows_modules() -> None:
 
 
 def load_renamer_module() -> Any:
-    """Загружает ``file-renamer.py`` как модуль, не меняя рабочую директорию."""
+    """Загружает ``file_renamer.py`` как модуль, не меняя рабочую директорию."""
     if MODULE_NAME in sys.modules:
         return sys.modules[MODULE_NAME]
 

@@ -9,6 +9,12 @@ __pycache__/
 build/
 dist/
 *.spec
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+renamer_logs/
+temp_dir/
+test_directory/
 tasks.txt
 *.tmp
 *.log

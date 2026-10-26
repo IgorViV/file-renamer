@@ -256,6 +256,36 @@ class RenameResultTests(TemporaryProjectTest):
         self.assertIn("подтвердить", "\n".join(captured.output))
 
 
+class BuildPlanTests(TemporaryProjectTest):
+    def test_plan_reports_invalid_date_and_collision(self):
+        bad_date = self.add_file("39.19.99 bad.txt")
+        source = self.add_file(FILE_OLD)
+        self.add_file(FILE_NEW)
+        renamer = FileRenamer(str(self.dir))
+
+        plan, errors = renamer.build_rename_plan()
+
+        self.assertEqual(plan, [])
+        self.assertEqual({item for item, _ in errors}, {bad_date, source})
+        reasons = "\n".join(reason for _, reason in errors)
+        self.assertIn("некорректная дата", reasons)
+        self.assertIn("уже существует", reasons)
+
+
+class ShortcutConfirmationTests(TemporaryProjectTest):
+    def test_declined_confirmation_does_not_update_shortcuts(self):
+        lnk = self.add_file("26.10.25 link.lnk", content="fake")
+        backend = FakeBackend(r"C:\26.10.25 folder\file.txt")
+        renamer = FileRenamer(str(self.dir), shortcut_backend=backend)
+        renamer.get_shortcut_list = lambda: [lnk]
+
+        success, failed = renamer.modify_shorcuts(confirm=lambda shortcuts: False)
+
+        self.assertEqual((success, failed), (0, 0))
+        self.assertEqual(backend.updates, [])
+        self.assertTrue(lnk.exists())
+
+
 class RenameScopeTests(TemporaryProjectTest):
     def setUp(self):
         super().setUp()
