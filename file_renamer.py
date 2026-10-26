@@ -5,11 +5,18 @@ import time
 import pathlib
 import logging
 import re
+import tempfile
 from datetime import datetime
-from typing import Callable, List, Optional, Tuple
+from logging.handlers import RotatingFileHandler
+from typing import Callable, List, Mapping, Optional, Tuple
 from colorama import init, Fore, Style
 
-__version__ = '0.2.0'
+__version__ = '0.3.0'
+
+LOG_DIR_ENV = 'FILE_RENAMER_LOG_DIR'
+LOG_FILE_PREFIX = 'renamer_'
+LOG_FILE_SUFFIX = '.log'
+LOG_FORMAT = '%(asctime)s %(levelname)s %(message)s'
 
 MASK_FILTER_FILE = '[0-3][0-9].[0-1][0-9].[0-9][0-9] *'
 MASK_FILTER_SHORTCUT = '*.lnk'
@@ -53,19 +60,126 @@ def clear_screen():
     """очищает экран"""
     os.system('cls' if os.name == 'nt' else 'clear')
 
-def setup_logging():
-    """настраивает логирование"""
-    logs_directory = 'renamer_logs'
-    os.makedirs(logs_directory, exist_ok=True)
-    log_filename = f"{logs_directory}/renamer_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+def default_logs_directory(
+    environ: Optional[Mapping[str, str]] = None,
+    os_name: Optional[str] = None,
+    home: Optional[pathlib.Path] = None,
+) -> pathlib.Path:
+    """возвращает каталог логов по умолчанию.
+
+    Windows: ``%LOCALAPPDATA%\\file-renamer\\logs``.
+    Остальные ОС: ``$XDG_STATE_HOME/file-renamer/logs`` или
+    ``~/.local/state/file-renamer/logs``.
+    Переопределяется переменной ``FILE_RENAMER_LOG_DIR``.
+    """
+    environ = os.environ if environ is None else environ
+    os_name = os.name if os_name is None else os_name
+    home_path = pathlib.Path.home() if home is None else pathlib.Path(home)
+
+    override = environ.get(LOG_DIR_ENV)
+    if override:
+        return pathlib.Path(override).expanduser()
+
+    if os_name == 'nt':
+        local_appdata = environ.get('LOCALAPPDATA')
+        base = (
+            pathlib.Path(local_appdata)
+            if local_appdata
+            else home_path / 'AppData' / 'Local'
+        )
+        return base / 'file-renamer' / 'logs'
+
+    state_home = environ.get('XDG_STATE_HOME')
+    base = (
+        pathlib.Path(state_home)
+        if state_home
+        else home_path / '.local' / 'state'
+    )
+    return base / 'file-renamer' / 'logs'
+
+
+def _prepare_logs_directory(directory: pathlib.Path) -> pathlib.Path:
+    """создает каталог логов, откатываясь на CWD и временный каталог"""
+    candidates = [
+        pathlib.Path(directory),
+        pathlib.Path.cwd() / 'renamer_logs',
+        pathlib.Path(tempfile.gettempdir()) / 'file-renamer-logs',
+    ]
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except OSError:
+            continue
+    raise OSError("не удалось создать ни один каталог для логов")
+
+
+def prune_old_logs(directory: pathlib.Path, keep: int = 10) -> None:
+    """удаляет старые логи, оставляя ``keep`` самых новых файлов"""
+    if keep < 1:
+        return
+
+    logs = []
+    for path in pathlib.Path(directory).glob(
+        f'{LOG_FILE_PREFIX}*{LOG_FILE_SUFFIX}*'
+    ):
+        try:
+            if path.is_file():
+                logs.append((path.stat().st_mtime, path))
+        except OSError:
+            continue
+
+    logs.sort(key=lambda item: item[0], reverse=True)
+    for _mtime, path in logs[keep:]:
+        try:
+            path.unlink()
+        except OSError:
+            continue
+
+
+def setup_logging(
+    logs_directory=None,
+    max_bytes: int = 1_000_000,
+    backup_count: int = 3,
+    keep: int = 10,
+) -> Optional[pathlib.Path]:
+    """настраивает логирование с ротацией, возвращает путь к файлу лога"""
+    try:
+        directory = _prepare_logs_directory(
+            pathlib.Path(logs_directory)
+            if logs_directory is not None
+            else default_logs_directory()
+        )
+        prune_old_logs(directory, keep=keep)
+        log_filename = directory / (
+            f"{LOG_FILE_PREFIX}{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+            f"{LOG_FILE_SUFFIX}"
+        )
+        file_handler = RotatingFileHandler(
+            log_filename,
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+            encoding='utf-8',
+        )
+    except OSError as e:
+        logging.basicConfig(
+            level=logging.INFO,
+            format=LOG_FORMAT,
+            handlers=[logging.StreamHandler()],
+            force=True,
+        )
+        logging.getLogger(__name__).warning(
+            "Не удалось открыть файл журнала: %s", e
+        )
+        return None
+
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s %(levelname)s %(message)s',
-        handlers=[
-            logging.FileHandler(log_filename),
-            logging.StreamHandler()
-        ]
+        format=LOG_FORMAT,
+        handlers=[file_handler, logging.StreamHandler()],
+        force=True,
     )
+    return log_filename
 
 class FileRenamer:
     def __init__(self, directory: str, shortcut_backend=None):

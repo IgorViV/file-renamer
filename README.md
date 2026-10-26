@@ -57,6 +57,17 @@ python -m unittest discover -s tests -t . -v
 Тесты не требуют Windows и `pywin32`: COM-вызовы подменяются, а импорты
 Windows-зависимостей выполняются лениво.
 
+## Логи
+
+- Windows: `%LOCALAPPDATA%\file-renamer\logs`;
+- Linux/macOS: `$XDG_STATE_HOME/file-renamer/logs` или
+  `~/.local/state/file-renamer/logs`;
+- свой каталог задаётся переменной `FILE_RENAMER_LOG_DIR`.
+
+На каждый запуск создаётся отдельный файл, включена ротация (1 МБ, 3 архивные
+копии), хранятся 10 последних файлов. Если каталог недоступен, логи выводятся
+только в консоль с предупреждением.
+
 ## Лицензия
 
 MIT, см. [LICENSE](LICENSE).
