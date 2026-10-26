@@ -5,15 +5,47 @@ import logging
 import unittest
 import random
 import platform
-import winshell
 import re
 from datetime import datetime, timedelta
-from win32com.client import Dispatch
-from typing import List, Tuple
-from colorama import init, Fore, Back, Style
+from typing import Callable, List, Optional, Tuple
+from colorama import init, Fore, Style
 
 MASK_FILTER_FILE = '[0-3][0-9].[0-1][0-9].[0-9][0-9] *'
 MASK_FILTER_SHORTCUT = '*.lnk'
+
+
+class WindowsShortcutBackend:
+    """Обновляет ярлык на месте, сохраняя остальные его свойства.
+
+    Используется ``WScript.Shell``: объект ярлыка читается из существующего
+    файла, меняется только ``TargetPath``, после чего ярлык сохраняется.
+    """
+
+    def _shell(self):
+        """лениво импортирует COM-объект (модуль должен импортироваться и без pywin32)"""
+        try:
+            from win32com.client import Dispatch
+        except ImportError as exc:
+            raise RuntimeError(
+                "Для работы с ярлыками требуется pywin32 (Windows)"
+            ) from exc
+        return Dispatch('WScript.Shell')
+
+    def read_target(self, lnk_path: pathlib.Path) -> str:
+        """возвращает целевой путь ярлыка"""
+        shortcut = self._shell().CreateShortCut(str(lnk_path))
+        target = shortcut.Targetpath
+        if not target:
+            raise ValueError(f"У ярлыка не задан целевой путь: {lnk_path}")
+        return str(target)
+
+    def update_target(self, lnk_path: pathlib.Path, new_target: str) -> None:
+        """меняет целевой путь ярлыка, не затрагивая его свойства"""
+        shortcut = self._shell().CreateShortCut(str(lnk_path))
+        shortcut.Targetpath = new_target
+        shortcut.save()
+
+
 def clear_screen():
     """очищает экран"""
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -33,11 +65,12 @@ def setup_logging():
     )
 
 class FileRenamer:
-    def __init__(self, directory: str):
+    def __init__(self, directory: str, shortcut_backend=None):
         self.directory = directory.strip('"')
         self.mask = MASK_FILTER_FILE
         self.mask_shortcut = MASK_FILTER_SHORTCUT
         self.logger = logging.getLogger(__name__)
+        self._shortcut_backend = shortcut_backend
 
     def validate_directory(self) -> bool:
         """проверяет существование каталога"""
@@ -74,35 +107,103 @@ class FileRenamer:
             self.logger.error(f"Ошибка при получении списка ярлыков: {e}")
             return []
 
+    def _target_path(self, file: pathlib.Path) -> pathlib.Path:
+        """возвращает путь с датой в формате ГГГГ.ММ.ДД"""
+        old_name = file.name
+        try:
+            dateobj = datetime.strptime(old_name[:8], '%d.%m.%y').date()
+        except ValueError as e:
+            raise ValueError(
+                f"в имени '{old_name}' нет корректной даты ДД.ММ.ГГ"
+            ) from e
+        date_string = dateobj.strftime('%Y.%m.%d')
+        return file.with_name(f"{date_string}{old_name[8:]}")
+
+    def _apply_rename(self, source: pathlib.Path, target: pathlib.Path) -> bool:
+        """переименовывает объект, не перезаписывая существующую цель"""
+        if source == target:
+            self.logger.info(f"{source} уже имеет корректное имя")
+            return True
+        if target.exists():
+            self.logger.error(f"Не переименован {source}: цель уже существует {target}")
+            return False
+        try:
+            os.rename(source, target)
+        except Exception as e:
+            self.logger.error(f"Ошибка переименования файла {source}: {e}")
+            return False
+        self.logger.info(f"{source} -> {target}")
+        return True
+
     def rename_prefix(self, file: pathlib.Path) -> bool:
         """переименовывает дату в префиксе имени файла"""
-        old_name = file.name
-        dateobj = datetime.strptime(old_name[:8], '%d.%m.%y').date()
-        date_string = dateobj.strftime('%Y.%m.%d')
-        new_name = f"{date_string}{old_name[8:]}"
         try:
-            os.rename(f'{file}', file.with_name(new_name))
-            # print(f'{old_name} переименован --> {new_name}')
-            return True
-        except Exception as e:
-            self.logger.error(f"Ошибка переименования файла {old_name}: {e}")
+            new_path = self._target_path(file)
+        except ValueError as e:
+            self.logger.error(f"Не переименован {file}: {e}")
             return False
+        return self._apply_rename(file, new_path)
 
-    def rename_files(self) -> Tuple[int, int]:
-        """переименовывает файлы"""
-        success_count = 0
-        failed_count = 0
-        list_files = self.get_files_list()
-
-        for file in list_files:
+    def build_rename_plan(
+        self
+    ) -> Tuple[List[Tuple[pathlib.Path, pathlib.Path]], List[Tuple[pathlib.Path, str]]]:
+        """строит план переименования и список проблемных объектов"""
+        plan = []
+        errors = []
+        for file in self.get_files_list():
             try:
-                if self.rename_prefix(file):
-                    success_count += 1
-                else:
-                    failed_count += 1
+                new_path = self._target_path(file)
+            except ValueError as e:
+                errors.append((file, str(e)))
+                self.logger.error(f"Пропущен {file}: {e}")
+                continue
+            if new_path == file:
+                continue
+            if new_path.exists():
+                reason = f"цель уже существует: {new_path}"
+                errors.append((file, reason))
+                self.logger.error(f"Пропущен {file}: {reason}")
+                continue
+            plan.append((file, new_path))
+        return plan, errors
 
-            except Exception as e:
-                self.logger.error(f"Ошибка при переименовании {file}: {e}")
+    def rename_files(
+        self,
+        dry_run: bool = False,
+        confirm: Optional[
+            Callable[[List[Tuple[pathlib.Path, pathlib.Path]]], bool]
+        ] = None
+    ) -> Tuple[int, int]:
+        """переименовывает файлы; dry_run только показывает план"""
+        plan, errors = self.build_rename_plan()
+        failed_count = len(errors)
+
+        if plan:
+            print("\nПланируемые изменения:")
+            for source, target in plan:
+                print(f"{source} -> {target}")
+
+        if dry_run:
+            self.logger.info(
+                f"Предпросмотр (dry-run): будет переименовано {len(plan)}, "
+                f"проблем {failed_count}"
+            )
+            return len(plan), failed_count
+
+        if not plan:
+            self.logger.info("Нет файлов для переименования")
+            return 0, failed_count
+
+        if confirm is not None and not confirm(plan):
+            self.logger.info("Переименование отменено пользователем")
+            return 0, failed_count
+
+        success_count = 0
+        for source, target in plan:
+            if self._apply_rename(source, target):
+                success_count += 1
+            else:
+                failed_count += 1
 
         self.logger.info(f"Успешно переименовано: {success_count}, ошибок {failed_count}")
         return success_count, failed_count
@@ -125,34 +226,57 @@ class FileRenamer:
                 new_path = new_path + name_part + '\\'
 
         return os.path.dirname(new_path)
-    def rename_target_shorcut(self, lnk_path: pathlib.Path) -> bool:
-        """переименовывает целевой путь ярлыка"""
-        try:
-            shortcut = winshell.shortcut(str(lnk_path))
-            old_target = shortcut.path
-            os.remove(str(lnk_path))
 
+    def _get_shortcut_backend(self):
+        """возвращает бэкенд ярлыков, создавая Windows-бэкенд при необходимости"""
+        if self._shortcut_backend is None:
+            if os.name != 'nt':
+                raise RuntimeError("Обновление ярлыков поддерживается только в Windows")
+            self._shortcut_backend = WindowsShortcutBackend()
+        return self._shortcut_backend
+
+    def rename_target_shorcut(self, lnk_path: pathlib.Path) -> bool:
+        """переименовывает целевой путь ярлыка, не удаляя сам ярлык"""
+        try:
+            backend = self._get_shortcut_backend()
+            old_target = backend.read_target(lnk_path)
             new_target = self.update_folder_dates(old_target)
 
-            if not os.path.exists(os.path.dirname(new_target)):
-                raise FileNotFoundError(f"Путь назначения не существует: {new_target}")
+            if new_target == old_target:
+                self.logger.info(
+                    f"Ярлык {lnk_path} уже указывает на {new_target}, "
+                    "изменение не требуется"
+                )
+                return True
 
-            # cоздаем ярлык для файла
-            shell = Dispatch('WScript.Shell')
-            shortcut = shell.CreateShortCut(str(lnk_path))
-            shortcut.Targetpath = new_target
-            shortcut.save()
+            if not os.path.exists(new_target):
+                self.logger.error(f"Путь назначения не существует: {new_target}")
+                return False
 
+            backend.update_target(lnk_path, new_target)
+            self.logger.info(f"{lnk_path}: {old_target} -> {new_target}")
             return True
         except Exception as e:
-            self.logger.error(f"Ошибка переименования целевого пути ярлыка {str(lnk_path)}: {e}")
+            self.logger.error(f"Ошибка переименования целевого пути ярлыка {lnk_path}: {e}")
             return False
 
-    def modify_shorcuts(self) -> Tuple[int, int]:
-        """изменяет ярлыки"""
+    def modify_shorcuts(
+        self,
+        confirm: Optional[Callable[[List[pathlib.Path]], bool]] = None
+    ) -> Tuple[int, int]:
+        """изменяет ярлыки; confirm позволяет отменить операцию"""
         success_count = 0
         failed_count = 0
         list_shortcuts = self.get_shortcut_list()
+
+        if not list_shortcuts:
+            self.logger.info("Ярлыки не найдены")
+            return 0, 0
+
+        if confirm is not None and not confirm(list_shortcuts):
+            self.logger.info("Обновление ярлыков отменено пользователем")
+            return 0, 0
+
         for lnk in list_shortcuts:
 
             try:
@@ -162,6 +286,7 @@ class FileRenamer:
                     failed_count += 1
 
             except Exception as e:
+                failed_count += 1
                 self.logger.error(f"Ошибка при модификации ярлыка {lnk}: {e}")
 
         self.logger.info(f"Успешно модифицировано ярлыков: {success_count}, ошибок {failed_count}")
@@ -183,6 +308,8 @@ class FileRenamerTests(unittest.TestCase):
                 shortcut_path: путь, где будет создан ярлык
             """
             if platform.system() == "Windows":
+                from win32com.client import Dispatch
+
                 shell = Dispatch('WScript.Shell')
                 shortcut = shell.CreateShortCut(shortcut_path)
                 shortcut.Targetpath = target_path
@@ -266,6 +393,11 @@ class FileRenamerTests(unittest.TestCase):
         self.assertEqual(success_count, len(self.test_files))
         self.assertEqual(failed_count, 0)
 
+def ask_confirmation(prompt: str) -> bool:
+    """запрашивает подтверждение операции (y/N)"""
+    return input(prompt).strip().lower() in ('y', 'yes', 'д', 'да')
+
+
 def main_menu():
     """главное меню консольного приложения"""
     init()
@@ -300,7 +432,14 @@ def main_menu():
             else:
                 print(f"В каталоге {ask_path_dir} выполняем поиск файлов с префиксом датой в формате ДД.ММ.ГГ) ...")
 
-            renamer.rename_files()
+            dry_run = ask_confirmation("Только показать план без изменений (dry-run)? [y/N]: ")
+
+            renamer.rename_files(
+                dry_run=dry_run,
+                confirm=lambda plan: ask_confirmation(
+                    f"\nПереименовать {len(plan)} объект(ов)? [y/N]: "
+                )
+            )
 
             input("\nНажмите Enter для продолжения ...")
 
@@ -320,7 +459,11 @@ def main_menu():
             else:
                 print(f"В каталоге {ask_dir_lnk} выполняем поиск ярлыков ...")
 
-            renamer_lnk.modify_shorcuts()
+            renamer_lnk.modify_shorcuts(
+                confirm=lambda shortcuts: ask_confirmation(
+                    f"\nОбновить {len(shortcuts)} ярлык(ов)? [y/N]: "
+                )
+            )
 
             input("\nНажмите Enter для продолжения ...")
 
@@ -340,6 +483,8 @@ def main_menu():
             print("\nПорядок использования:")
             print("- сначала переименовываем файлы;")
             print("- затем переименовываем ссылки в ярлыках.")
+            print("- перед изменениями показывается план")
+            print("  и запрашивается подтверждение.")
             print("* может возникнуть ошибка, если файл на который ярлык будет ссылаться еще не переименован.")
 
             input("\nНажмите Enter для продолжения ...")
