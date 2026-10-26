@@ -1,6 +1,7 @@
 /target
 Cargo.lock.bak
 .DS_Store
+.idea/
 renamer_logs/
 temp_dir/
 __pycache__/

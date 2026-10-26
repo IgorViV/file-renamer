@@ -550,7 +550,7 @@ impl App {
                 .add_modifier(Modifier::BOLD),
         )))
         .alignment(Alignment::Center)
-        .block(block("Rust + ratatui"));
+        .block(block(""));
         frame.render_widget(header, chunks[0]);
 
         let items: Vec<ListItem> = MENU_ITEMS.iter().map(|item| ListItem::new(*item)).collect();
