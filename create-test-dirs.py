@@ -7,7 +7,7 @@ import random
 from datetime import datetime, timedelta
 
 try:  # colorama нужна только для цветного вывода
-    from colorama import init, Fore, Style
+    from colorama import Fore, Style, init
 except ImportError:  # pragma: no cover - зависит от окружения
     def init():
         pass

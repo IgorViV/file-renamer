@@ -19,7 +19,7 @@ MODULE_NAME = "file_renamer_under_test"
 
 def _stub_colorama() -> None:
     try:
-        import colorama  # noqa: F401
+        import colorama
     except ImportError:
         colorama = types.ModuleType("colorama")
         empty_style = types.SimpleNamespace(YELLOW="", GREEN="", RESET_ALL="")

@@ -246,9 +246,9 @@ class RenameResultTests(TemporaryProjectTest):
         source = self.add_file(FILE_OLD)
         renamer = FileRenamer(str(self.dir))
 
-        with mock.patch.object(module.os, "rename") as rename:
-            with self.assertLogs(renamer.logger, level="ERROR") as captured:
-                self.assertFalse(renamer.rename_prefix(source))
+        with mock.patch.object(module.os, "rename") as rename, \
+                self.assertLogs(renamer.logger, level="ERROR") as captured:
+            self.assertFalse(renamer.rename_prefix(source))
 
         rename.assert_called_once()
         self.assertTrue(source.exists())

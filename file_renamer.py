@@ -1,15 +1,17 @@
 """CLI-утилита для массового переименования дат в именах файлов, папок и ярлыков."""
 
-import os
-import time
-import pathlib
+import contextlib
 import logging
+import os
+import pathlib
 import re
 import tempfile
+import time
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from typing import Callable, List, Mapping, Optional, Tuple
-from colorama import init, Fore, Style
+
+from colorama import Fore, Style, init
 
 __version__ = '0.3.0'
 
@@ -61,9 +63,9 @@ def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 def default_logs_directory(
-    environ: Optional[Mapping[str, str]] = None,
-    os_name: Optional[str] = None,
-    home: Optional[pathlib.Path] = None,
+    environ: Mapping[str, str] | None = None,
+    os_name: str | None = None,
+    home: pathlib.Path | None = None,
 ) -> pathlib.Path:
     """возвращает каталог логов по умолчанию.
 
@@ -142,7 +144,7 @@ def setup_logging(
     max_bytes: int = 1_000_000,
     backup_count: int = 3,
     keep: int = 10,
-) -> Optional[pathlib.Path]:
+) -> pathlib.Path | None:
     """настраивает логирование с ротацией, возвращает путь к файлу лога"""
     try:
         directory = _prepare_logs_directory(
@@ -202,7 +204,7 @@ class FileRenamer:
             return False
         return True
 
-    def _collect_matching(self) -> Tuple[List[pathlib.Path], List[pathlib.Path]]:
+    def _collect_matching(self) -> tuple[list[pathlib.Path], list[pathlib.Path]]:
         """собирает файлы и каталоги, подходящие под маску"""
         files = []
         directories = []
@@ -223,14 +225,14 @@ class FileRenamer:
         """сначала более глубокие объекты, затем по пути"""
         return (-len(item.parts), str(item))
 
-    def get_files_list(self) -> List[pathlib.Path]:
+    def get_files_list(self) -> list[pathlib.Path]:
         """получает список файлов (без каталогов) в каталоге"""
         files, _ = self._collect_matching()
         files.sort(key=self._rename_order)
         self.logger.info(f"Найдено файлов: {len(files)}")
         return files
 
-    def get_directories_list(self) -> List[pathlib.Path]:
+    def get_directories_list(self) -> list[pathlib.Path]:
         """получает список каталогов в каталоге"""
         _, directories = self._collect_matching()
         directories.sort(key=self._rename_order)
@@ -239,7 +241,7 @@ class FileRenamer:
 
     def get_rename_candidates(
         self, include_directories: bool = True
-    ) -> List[pathlib.Path]:
+    ) -> list[pathlib.Path]:
         """возвращает файлы и, при необходимости, каталоги в порядке переименования"""
         files, directories = self._collect_matching()
         candidates = (files + directories) if include_directories else files
@@ -251,7 +253,7 @@ class FileRenamer:
         )
         return candidates
 
-    def get_shortcut_list(self) -> List[pathlib.Path]:
+    def get_shortcut_list(self) -> list[pathlib.Path]:
         """получает список ярлыков в каталоге"""
         list_shortcut = []
         try:
@@ -320,7 +322,7 @@ class FileRenamer:
 
     def build_rename_plan(
         self, include_directories: bool = True
-    ) -> Tuple[List[Tuple[pathlib.Path, pathlib.Path]], List[Tuple[pathlib.Path, str]]]:
+    ) -> tuple[list[tuple[pathlib.Path, pathlib.Path]], list[tuple[pathlib.Path, str]]]:
         """строит план переименования и список проблемных объектов"""
         plan = []
         errors = []
@@ -346,11 +348,9 @@ class FileRenamer:
     def rename_files(
         self,
         dry_run: bool = False,
-        confirm: Optional[
-            Callable[[List[Tuple[pathlib.Path, pathlib.Path]]], bool]
-        ] = None,
+        confirm: Callable[[list[tuple[pathlib.Path, pathlib.Path]]], bool] | None = None,
         include_directories: bool = True
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """переименовывает файлы и каталоги; dry_run только показывает план"""
         plan, errors = self.build_rename_plan(
             include_directories=include_directories
@@ -440,8 +440,8 @@ class FileRenamer:
 
     def modify_shortcuts(
         self,
-        confirm: Optional[Callable[[List[pathlib.Path]], bool]] = None
-    ) -> Tuple[int, int]:
+        confirm: Callable[[list[pathlib.Path]], bool] | None = None
+    ) -> tuple[int, int]:
         """изменяет ярлыки; confirm позволяет отменить операцию"""
         success_count = 0
         failed_count = 0
@@ -479,7 +479,7 @@ class FileRenamer:
     modify_shorcuts = modify_shortcuts
 
 
-def prompt_input(prompt: str) -> Optional[str]:
+def prompt_input(prompt: str) -> str | None:
     """читает строку, переживая EOF и Ctrl+C"""
     try:
         return input(prompt).strip()
@@ -490,10 +490,8 @@ def prompt_input(prompt: str) -> Optional[str]:
 
 def pause() -> None:
     """ждет Enter, не падая при EOF/Ctrl+C"""
-    try:
+    with contextlib.suppress(EOFError, KeyboardInterrupt):
         input("\nНажмите Enter для продолжения ...")
-    except (EOFError, KeyboardInterrupt):
-        pass
 
 
 def ask_confirmation(prompt: str) -> bool:
@@ -579,7 +577,7 @@ def main_menu():
                 continue
 
             if renamer_lnk.directory == '.':
-                print(f"В текущем каталоге выполняем поиск ярлыков ...")
+                print("В текущем каталоге выполняем поиск ярлыков ...")
             else:
                 print(f"В каталоге {renamer_lnk.directory} выполняем поиск ярлыков ...")
 
