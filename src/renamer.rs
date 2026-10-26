@@ -424,6 +424,29 @@ impl FileRenamer {
         })
     }
 
+    /// Применяет заранее построенный план.
+    #[must_use]
+    pub fn apply_plan(&self, plan: &RenamePlan) -> Outcome {
+        let mut renamed = 0;
+        let mut failed = plan.errors.len();
+
+        for item in &plan.items {
+            if self.apply_rename(&item.source, &item.target) {
+                renamed += 1;
+            } else {
+                failed += 1;
+            }
+        }
+
+        self.logger
+            .info(format!("Успешно переименовано: {renamed}, ошибок {failed}"));
+        Outcome {
+            renamed,
+            failed,
+            planned: plan.items.len(),
+        }
+    }
+
     /// Обновляет целевой путь одного ярлыка.
     ///
     /// # Errors

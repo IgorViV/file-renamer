@@ -77,6 +77,13 @@ impl Logger {
         self
     }
 
+    /// Отключает вывод в stderr (нужно для полноэкранного TUI).
+    #[must_use]
+    pub fn without_console(mut self) -> Self {
+        self.console = false;
+        self
+    }
+
     /// Создает журнал, который пишет только в stderr.
     #[must_use]
     pub fn console_only() -> Self {

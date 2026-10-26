@@ -3,11 +3,11 @@
 pub mod date;
 pub mod error;
 pub mod logging;
-pub mod menu;
 pub mod paths;
 pub mod renamer;
 pub mod shortcut;
 pub mod test_data;
+pub mod tui;
 
 pub use error::{Error, Result};
 pub use renamer::{FileRenamer, Outcome, PlanError, PlanItem, RenamePlan};
